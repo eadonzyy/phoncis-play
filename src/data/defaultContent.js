@@ -1,8 +1,9 @@
 export const defaultSiteContent = {
-  version: 'v1.4.0',
+  version: 'v1.5.0',
   adminEmails: ['admin@example.com'],
   teacherEmails: ['teacher@example.com'],
   audioLibrary: { letters: {}, sounds: {}, words: {}, phrases: {} },
+  aiSettings: { enabled: true, mode: 'local' },
   teacherDashboard: {
     className: 'Demo Phonics Class',
     assignments: ['alphabet', 'short-vowels', 'cvc'],
