@@ -1,0 +1,4 @@
+-- Phonics Adventure v1.4 optional audio storage notes
+-- 目前前端後台可把小型 mp3 轉為 data URL 存進 site_content。
+-- 若要正式大量音檔，建議在 Supabase Storage 建立 bucket：phonics-audio。
+-- 然後把 public URL 填入後台 audioLibrary 對應項目的 url 欄位，或在下一版改為 Storage upload API。

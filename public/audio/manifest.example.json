@@ -1,0 +1,5 @@
+{
+  "letters": ["a.mp3", "b.mp3", "c.mp3"],
+  "sounds": ["sh.mp3", "th.mp3", "ai.mp3", "ar.mp3"],
+  "words": ["cat.mp3", "cape.mp3", "rain.mp3", "fork.mp3"]
+}

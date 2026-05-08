@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { phonicsUnits, stories, games } from './data/phonics.js';
 import { alphabetSounds, getSoundEntry, getSoundSymbol } from './data/sounds.js';
-import { speakText, speakWord, speakPhonicsSound, speakBlendWord, speakPattern } from './utils/speech.js';
-import { getCurrentUser, getProviderStatus, loadProgress, saveProgress, signIn, signOut, signUp } from './services/syncService.js';
+import { defaultSiteContent } from './data/defaultContent.js';
+import { speakText, speakWord, speakPhonicsSound, speakBlendWord, speakPattern, setAudioLibrary } from './utils/speech.js';
+import { getCurrentUser, loadProgress, saveProgress, signIn, signOut, signUp } from './services/syncService.js';
+import { isAdminUser, isTeacherUser, loadSiteContent, mergeSiteContent, resetSiteContent, saveSiteContent } from './services/contentService.js';
 
 const defaultProgress = {
   stars: 0,
@@ -16,28 +17,9 @@ const defaultProgress = {
   readingLog: 0,
 };
 
-const featuredBadges = [
-  { key: 'alphabet', name: 'Alphabet Master', icon: '🔤' },
-  { key: 'short-vowels', name: 'Short Vowel Hero', icon: '🍎' },
-  { key: 'cvc', name: 'Blending Star', icon: '🧱' },
-  { key: 'magic-e', name: 'Magic E Wizard', icon: '🪄' },
-  { key: 'reader', name: 'Reading Explorer', icon: '📚' },
-  { key: 'r-controlled', name: 'Bossy R Hero', icon: '🦁' },
-];
-
-const unitToStoryLevel = {
-  alphabet: 'Short a / CVC',
-  'short-vowels': 'Short a / CVC',
-  cvc: 'Short a / CVC',
-  'word-families': 'Short a / CVC',
-  blends: 'Digraph sh / short i',
-  digraphs: 'Digraph sh / short i',
-  'magic-e': 'Silent e',
-  'long-vowels': 'Silent e',
-  'vowel-teams': 'Silent e',
-  'r-controlled': 'Silent e',
-  diphthongs: 'Silent e',
-};
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
 
 function mergeProgress(remote) {
   return {
@@ -57,15 +39,10 @@ function toDateString(value) {
   return date.toISOString().slice(0, 10);
 }
 
-function getYesterdayString(base) {
-  const date = new Date(base);
+function getYesterdayString(baseString) {
+  const date = new Date(baseString);
   date.setDate(date.getDate() - 1);
   return date.toISOString().slice(0, 10);
-}
-
-function addBadgeIfNeeded(progress, key) {
-  if (progress.badges.includes(key)) return progress.badges;
-  return [...progress.badges, key];
 }
 
 function updatePracticeProgress(progress, skill, word = '') {
@@ -84,76 +61,116 @@ function updatePracticeProgress(progress, skill, word = '') {
 
   return {
     ...progress,
-    practiceCount: (progress.practiceCount || 0) + 1,
     lastPracticed: new Date().toISOString(),
+    practiceCount: (progress.practiceCount || 0) + 1,
     streakDays,
-    readingLog: skill === 'reader' ? (progress.readingLog || 0) + 1 : (progress.readingLog || 0),
     practiceWords,
+    readingLog: skill === 'reader' ? (progress.readingLog || 0) + 1 : (progress.readingLog || 0),
   };
 }
 
-function AuthPanel({ user, onUserChange, onMessage }) {
+function splitLines(value) {
+  return String(value || '')
+    .split(/\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function pairLinesToArray(value) {
+  return String(value || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [a, b] = line.split('|').map((part) => part.trim());
+      return [a || '', b || ''];
+    })
+    .filter((pair) => pair[0] && pair[1]);
+}
+
+function pairsToText(pairs) {
+  return (pairs || []).map((pair) => `${pair[0]}|${pair[1]}`).join('\n');
+}
+
+function storyToText(story) {
+  if (!story) return '';
+  return `${story.title} (${story.level})`;
+}
+
+function completedPercent(progress, total) {
+  return Math.round((Object.keys(progress.completedUnits || {}).length / total) * 100);
+}
+
+function addBadgeIfNeeded(progress, badgeKey) {
+  if (progress.badges.includes(badgeKey)) return progress.badges;
+  return [...progress.badges, badgeKey];
+}
+
+function UserMenu({ user, isAdmin, isTeacher, onAuth, onSignOut, message }) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState('signin');
   const [email, setEmail] = useState('student@example.com');
   const [password, setPassword] = useState('student123');
   const [loading, setLoading] = useState(false);
-  const status = getProviderStatus();
 
-  async function handleAuth(mode) {
+  async function handleSubmit(e) {
+    e.preventDefault();
     setLoading(true);
     try {
       const nextUser = mode === 'signup' ? await signUp(email, password) : await signIn(email, password);
-      onUserChange(nextUser);
-      onMessage(`${mode === 'signup' ? '註冊' : '登入'}成功：${nextUser?.email || 'local user'}`);
+      onAuth(nextUser, `${mode === 'signup' ? '註冊' : '登入'}成功：${nextUser?.email || ''}`);
+      setOpen(false);
     } catch (error) {
-      onMessage(error.message || '登入失敗，請檢查設定。');
+      onAuth(null, error.message || '登入失敗');
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleSignOut() {
-    await signOut();
-    onUserChange(null);
-    onMessage('已登出。');
+  if (user) {
+    return (
+      <div className="user-menu">
+        <button className="user-chip" onClick={() => setOpen((v) => !v)}>
+          👤 {user.email?.split('@')[0] || 'student'}
+        </button>
+        {open && (
+          <div className="dropdown-card">
+            <p><strong>{user.email}</strong></p>
+            <p className="hint">{isAdmin ? '管理員身份' : isTeacher ? '教師身份' : '學生身份'}</p>
+            {message ? <p className="hint">{message}</p> : null}
+            <button className="btn secondary full" onClick={() => { onSignOut(); setOpen(false); }}>登出</button>
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
-    <section className="panel auth-panel">
-      <div className="section-title-row">
-        <div>
-          <h2>登入與同步</h2>
-          <p>目前同步模式：<strong>{status.name}</strong> {status.configured ? '✅' : '⚠️ 尚未配置'}</p>
-        </div>
-        <span className="big-emoji">☁️</span>
-      </div>
-
-      {user ? (
-        <div className="signed-in-box">
-          <p>已登入：<strong>{user.email || user.id}</strong></p>
-          <button className="btn secondary" onClick={handleSignOut}>登出</button>
-        </div>
-      ) : (
-        <div className="auth-grid">
+    <div className="user-menu">
+      <button className="btn secondary small" onClick={() => { setMode('signin'); setOpen((v) => !v); }}>登入 / 註冊</button>
+      {open && (
+        <form className="dropdown-card auth-mini-form" onSubmit={handleSubmit}>
+          <div className="toggle-row">
+            <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => setMode('signin')}>登入</button>
+            <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>註冊</button>
+          </div>
           <label>
             Email
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="student@example.com" />
+            <input value={email} onChange={(e) => setEmail(e.target.value)} />
           </label>
           <label>
             Password
-            <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="至少 6 位" />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </label>
-          <button className="btn primary" disabled={loading} onClick={() => handleAuth('signin')}>登入</button>
-          <button className="btn secondary" disabled={loading} onClick={() => handleAuth('signup')}>註冊</button>
-        </div>
+          <button className="btn dark full" disabled={loading}>{mode === 'signup' ? '註冊' : '登入'}</button>
+        </form>
       )}
-      <p className="hint">提示：如果沒有填 Supabase/Firebase 配置，網站會自動用本機儲存，方便你先測試畫面。</p>
-    </section>
+    </div>
   );
 }
 
-function ProgressCircle({ progress }) {
-  const completedCount = Object.keys(progress.completedUnits || {}).length;
-  const percent = Math.round((completedCount / phonicsUnits.length) * 100);
+function ProgressCircle({ progress, total }) {
+  const percent = completedPercent(progress, total);
   return (
     <div className="progress-circle" style={{ background: `conic-gradient(#f59e0b ${percent * 3.6}deg, #fff7ed 0deg)` }}>
       <div>
@@ -164,137 +181,45 @@ function ProgressCircle({ progress }) {
   );
 }
 
-function HeroActions({ setTab }) {
-  return (
-    <div className="hero-buttons four">
-      <button className="btn dark" onClick={() => setTab('learn')}>開始學習</button>
-      <button className="btn secondary" onClick={() => setTab('review')}>複習練習</button>
-      <button className="btn pink" onClick={() => setTab('games')}>玩遊戲</button>
-      <button className="btn primary" onClick={() => setTab('progress')}>我的進度</button>
-    </div>
-  );
-}
+function MapView({ units, progress, selectedUnit, setSelectedUnit, setTab, search, setSearch }) {
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return units;
+    return units.filter((unit) => [unit.title, unit.zh, unit.description, ...unit.patterns, ...unit.words].join(' ').toLowerCase().includes(q));
+  }, [search, units]);
 
-function UnitCard({ unit, selected, completed, locked, onClick }) {
   return (
-    <button className={`unit-card ${unit.theme} ${selected ? 'selected' : ''} ${locked ? 'locked' : ''}`} onClick={onClick}>
-      <div className="unit-top">
-        <span className="unit-icon">{unit.icon}</span>
-        <span className="level-pill">Level {unit.level}</span>
-      </div>
-      <h3>{unit.title}</h3>
-      <p className="unit-zh">{unit.zh}</p>
-      <p>{unit.description}</p>
-      <div className="chips">
-        {unit.patterns.slice(0, 4).map((pattern) => <span key={pattern}>{pattern}</span>)}
-      </div>
-      {completed && <div className="complete-mark">✓ 已完成</div>}
-      {locked && <div className="lock-mark">🔒 待解鎖</div>}
-    </button>
-  );
-}
-
-function UnitFlow() {
-  const steps = ['Learn', 'Practice', 'Game', 'Read', 'Check'];
-  return (
-    <section className="panel flow-panel">
-      <div className="section-title-row">
+    <section className="map-view">
+      <div className="section-heading">
         <div>
-          <h2>本單元流程</h2>
-          <p>固定的學習節奏可降低焦慮，幫助小學生安心完成任務。</p>
+          <h2>12 個完整 Phonics 單元</h2>
+          <p>從字母音、短母音、CVC 到 syllables，涵蓋完整小學生 phonics 課程路徑。</p>
         </div>
-        <span className="big-emoji">🧭</span>
+        <input className="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜尋 ai、Magic E、Bossy R..." />
       </div>
-      <div className="flow-steps">
-        {steps.map((step, index) => (
-          <div className="flow-step" key={step}>
-            <span>{index + 1}</span>
-            <strong>{step}</strong>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function InteractiveBlender({ onPractice }) {
-  const presets = ['cat', 'map', 'pig', 'dog', 'bus', 'sit', 'hot', 'hen', 'run'];
-  const [word, setWord] = useState('cat');
-  const letters = word.split('');
-
-  function playLetter(letter) {
-    speakPhonicsSound(letter, true);
-    onPractice('alphabet', letter);
-  }
-
-  function blend() {
-    speakBlendWord(word);
-    onPractice('cvc', word);
-  }
-
-  return (
-    <section className="panel">
-      <div className="section-title-row">
-        <div>
-          <h2>互動拼讀板</h2>
-          <p>點字母聽音，再按 Blend 合成單字。</p>
-        </div>
-        <span className="big-emoji">🧱</span>
-      </div>
-      <div className="blender-box">
-        {letters.map((letter, index) => (
-          <button className="letter-tile" key={`${letter}-${index}`} onClick={() => playLetter(letter)}>
-            <strong>{letter}</strong>
-            <span>{getSoundSymbol(letter)}</span>
-          </button>
-        ))}
-        <span className="arrow">→</span>
-        <button className="word-result" onClick={blend}>{word}<span>🔊</span></button>
-      </div>
-      <div className="chips large">
-        {presets.map((item) => <button key={item} onClick={() => setWord(item)}>{item}</button>)}
-      </div>
-    </section>
-  );
-}
-
-function MagicE({ onPractice }) {
-  const pairs = [
-    ['cap', 'cape', '🧢', '🦸'],
-    ['pin', 'pine', '📌', '🌲'],
-    ['hop', 'hope', '🐇', '🌟'],
-    ['cub', 'cube', '🐻', '🧊'],
-    ['tap', 'tape', '👆', '📼'],
-  ];
-  const [index, setIndex] = useState(0);
-  const [magic, setMagic] = useState(false);
-  const pair = pairs[index];
-
-  function toggleMagic() {
-    const next = !magic;
-    setMagic(next);
-    speakWord(next ? pair[1] : pair[0]);
-    onPractice('magic-e', next ? pair[1] : pair[0]);
-  }
-
-  return (
-    <section className="panel magic-panel">
-      <div className="section-title-row">
-        <div>
-          <h2>Magic E 動畫區</h2>
-          <p>把 e 加到字尾，觀察聲音和圖片如何改變。</p>
-        </div>
-        <span className="big-emoji">🪄</span>
-      </div>
-      <div className="magic-stage">
-        <div className="magic-card">
-          <span>{magic ? pair[3] : pair[2]}</span>
-          <strong>{magic ? pair[1] : pair[0]}</strong>
-        </div>
-        <button className="btn purple" onClick={toggleMagic}>{magic ? 'Remove e' : 'Add magic e'}</button>
-      </div>
-      <div className="chips large">
-        {pairs.map((p, i) => <button key={p[0]} onClick={() => { setIndex(i); setMagic(false); }}>{p[0]} → {p[1]}</button>)}
+      <div className="unit-grid">
+        {filtered.map((unit) => {
+          const completed = Boolean(progress.completedUnits?.[unit.id]);
+          return (
+            <button
+              key={unit.id}
+              className={`unit-card ${unit.theme} ${selectedUnit?.id === unit.id ? 'selected' : ''}`}
+              onClick={() => { setSelectedUnit(unit); setTab('learn'); }}
+            >
+              <div className="unit-top">
+                <span className="unit-icon">{unit.icon}</span>
+                <span className="level-pill">Level {unit.level}</span>
+              </div>
+              <h3>{unit.title}</h3>
+              <p className="unit-zh">{unit.zh}</p>
+              <p>{unit.description}</p>
+              <div className="chips">
+                {unit.patterns.slice(0, 4).map((pattern) => <span key={pattern}>{pattern}</span>)}
+              </div>
+              {completed ? <div className="complete-mark">✓ 已完成</div> : null}
+            </button>
+          );
+        })}
       </div>
     </section>
   );
@@ -305,19 +230,14 @@ function LetterSoundBoard({ onPractice }) {
     <section className="panel sound-board-panel">
       <div className="section-title-row">
         <div>
-          <h2>Letter Sound Board 字母音板</h2>
-          <p>點 A-Z 時會讀 phonics sound，不再讀字母名稱。每張卡都有 IPA 與代表單字。</p>
+          <h2>Letter Sound Board</h2>
+          <p>字母卡會優先播放真人 mp3；如果沒有音檔，才自動改用瀏覽器發音。</p>
         </div>
-        <span className="big-emoji">🔤</span>
+        <span className="big-emoji">🔊</span>
       </div>
       <div className="sound-board-grid">
         {alphabetSounds.map((item) => (
-          <button
-            className="sound-card"
-            key={item.key}
-            onClick={() => { speakPhonicsSound(item.key, true); onPractice('alphabet', item.example); }}
-            title={`${item.letter} ${item.symbol} ${item.example}`}
-          >
+          <button key={item.key} className="sound-card" onClick={() => { speakPhonicsSound(item.key, true); onPractice('alphabet', item.example); }}>
             <span className="sound-picture">{item.picture}</span>
             <strong>{item.letter.toLowerCase()}</strong>
             <em>{item.symbol}</em>
@@ -325,317 +245,195 @@ function LetterSoundBoard({ onPractice }) {
           </button>
         ))}
       </div>
-      <p className="hint">說明：瀏覽器語音不是專業錄音，這版會用近似音 + 代表單字處理，例如 a 會播放「ă / apple」，不是字母名 A。之後可再換成真人 mp3 音檔。</p>
+      <p className="hint">真人音檔建議放到 <code>public/audio/letters</code>、<code>public/audio/sounds</code>、<code>public/audio/words</code>。</p>
     </section>
   );
 }
 
-function ShortVowelSort({ onPractice, onMistake }) {
-  const wordBank = [
-    { word: 'cat', group: 'short a' },
-    { word: 'bed', group: 'short e' },
-    { word: 'pig', group: 'short i' },
-    { word: 'dog', group: 'short o' },
-    { word: 'sun', group: 'short u' },
-  ];
-  const [target, setTarget] = useState(wordBank[0]);
-  const groups = ['short a', 'short e', 'short i', 'short o', 'short u'];
+function InteractiveBlender({ unit, onPractice }) {
+  const presets = unit?.blendingSet?.length ? unit.blendingSet : ['cat', 'map', 'pig'];
+  const [word, setWord] = useState(presets[0]);
 
-  function next() {
-    setTarget(wordBank[Math.floor(Math.random() * wordBank.length)]);
-  }
+  useEffect(() => {
+    setWord(presets[0]);
+  }, [unit?.id]);
 
-  function choose(group) {
-    if (group === target.group) {
-      speakWord(target.word);
-      onPractice('short-vowels', target.word);
-      next();
-      return;
-    }
-    onMistake({
-      id: `${Date.now()}-vowel-${target.word}`,
-      skill: 'Short Vowels',
-      expected: target.group,
-      expectedLabel: target.group,
-      chosen: group,
-      chosenLabel: group,
-      createdAt: new Date().toISOString(),
-    });
-    speakPattern(`${target.group}: ${target.word}`);
-  }
-
+  const letters = String(word || '').split('');
   return (
     <section className="panel">
       <div className="section-title-row">
         <div>
-          <h2>短母音分類遊戲</h2>
-          <p>聽單字、看單字，選出它屬於哪一個短母音房間。</p>
+          <h2>互動拼讀板</h2>
+          <p>此區會跟著目前單元的練習字變化。管理員也可在後台修改每單元的 blendingSet。</p>
         </div>
-        <span className="big-emoji">🏠</span>
+        <span className="big-emoji">🧱</span>
       </div>
-      <div className="practice-center">
-        <button className="practice-word" onClick={() => speakWord(target.word)}>{target.word} 🔊</button>
-        <div className="option-grid five">
-          {groups.map((group) => <button key={group} onClick={() => choose(group)}>{group}</button>)}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function WordFamilyTrain({ onPractice }) {
-  const families = {
-    '-at': ['cat', 'hat', 'mat', 'sat'],
-    '-an': ['fan', 'man', 'pan', 'can'],
-    '-ig': ['pig', 'wig', 'big', 'dig'],
-    '-op': ['hop', 'mop', 'top', 'pop'],
-    '-ug': ['bug', 'rug', 'mug', 'hug'],
-  };
-  const familyKeys = Object.keys(families);
-  const [family, setFamily] = useState(familyKeys[0]);
-  return (
-    <section className="panel">
-      <div className="section-title-row">
-        <div>
-          <h2>Word Family Train</h2>
-          <p>用押韻火車認識同一家族的單字。</p>
-        </div>
-        <span className="big-emoji">🚂</span>
-      </div>
-      <div className="chips large">
-        {familyKeys.map((item) => <button key={item} onClick={() => setFamily(item)}>{item}</button>)}
-      </div>
-      <div className="train-row">
-        {families[family].map((word) => (
-          <button className="train-car" key={word} onClick={() => { speakWord(word); onPractice('word-families', word); }}>
-            <span>🚃</span>
-            <strong>{word}</strong>
+      <div className="blender-box">
+        {letters.map((letter, index) => (
+          <button key={`${letter}-${index}`} className="letter-tile" onClick={() => { speakPhonicsSound(letter, false); onPractice(unit?.id || 'blending', letter); }}>
+            <strong>{letter}</strong>
+            <span>{getSoundSymbol(letter)}</span>
           </button>
         ))}
-      </div>
-    </section>
-  );
-}
-
-function PatternExplorer({ unit, onPractice }) {
-  const [pattern, setPattern] = useState(unit.patterns[0]);
-  const relatedWords = useMemo(() => {
-    const key = String(pattern).split(/[:\s]/)[0].replace(/[^a-z]/gi, '').toLowerCase();
-    return unit.words.filter((word) => key && word.toLowerCase().includes(key)).slice(0, 6);
-  }, [pattern, unit.words]);
-
-  return (
-    <section className="panel">
-      <div className="section-title-row">
-        <div>
-          <h2>音型探索卡</h2>
-          <p>點音型、聽例字，建立規則與單字的連結。</p>
-        </div>
-        <span className="big-emoji">🧩</span>
+        <span className="arrow">→</span>
+        <button className="word-result" onClick={() => { speakBlendWord(word); onPractice(unit?.id || 'blending', word); }}>{word}<span>🔊</span></button>
       </div>
       <div className="chips large">
-        {unit.patterns.map((item) => <button key={item} onClick={() => { setPattern(item); speakPattern(item); onPractice(unit.id, item); }}>{item}</button>)}
-      </div>
-      <div className="explorer-box">
-        <div>
-          <strong>目前音型</strong>
-          <p>{pattern}</p>
-        </div>
-        <div className="word-grid compact">
-          {(relatedWords.length ? relatedWords : unit.words.slice(0, 6)).map((word) => (
-            <button key={word} onClick={() => { speakWord(word); onPractice(unit.id, word); }}>{word}<span>🔊</span></button>
-          ))}
-        </div>
+        {presets.map((item) => <button key={item} onClick={() => setWord(item)}>{item}</button>)}
       </div>
     </section>
   );
 }
 
-function UnitReadBridge({ selectedUnit, onPractice }) {
-  const story = stories.find((item) => item.level === unitToStoryLevel[selectedUnit.id]) || stories[0];
+function MagicE({ unit, onPractice }) {
+  const pairs = unit?.magicEPairs?.length ? unit.magicEPairs : [['cap', 'cape'], ['pin', 'pine']];
+  const [index, setIndex] = useState(0);
+  const [magic, setMagic] = useState(false);
+
+  useEffect(() => {
+    setIndex(0);
+    setMagic(false);
+  }, [unit?.id]);
+
+  const pair = pairs[index] || ['cap', 'cape'];
   return (
-    <section className="panel">
+    <section className="panel magic-panel">
       <div className="section-title-row">
         <div>
-          <h2>Read 閱讀小橋樑</h2>
-          <p>學完音型後，立刻讀一小段故事，把拼讀連到閱讀理解。</p>
+          <h2>Magic E 動畫區</h2>
+          <p>本區也會跟著單元變化。如果後台改了 magicEPairs，這裡會同步顯示新資料。</p>
         </div>
-        <span className="big-emoji">📖</span>
+        <span className="big-emoji">🪄</span>
       </div>
-      <p className="story-text bridge-story">{story.text}</p>
+      <div className="magic-stage">
+        <div className="magic-card big">
+          <span>{magic ? '✨' : '🔤'}</span>
+          <strong>{magic ? pair[1] : pair[0]}</strong>
+        </div>
+        <button className="btn purple" onClick={() => { const next = !magic; setMagic(next); speakWord(next ? pair[1] : pair[0]); onPractice(unit?.id || 'magic-e', next ? pair[1] : pair[0]); }}>
+          {magic ? 'Remove e' : 'Add magic e'}
+        </button>
+      </div>
       <div className="chips large">
-        {story.focus.map((word) => <button key={word} onClick={() => { speakWord(word); onPractice('reader', word); }}>{word} 🔊</button>)}
+        {pairs.map((item, i) => <button key={`${item[0]}-${item[1]}`} onClick={() => { setIndex(i); setMagic(false); }}>{item[0]} → {item[1]}</button>)}
       </div>
-      <button className="btn secondary" onClick={() => { speakText(story.text); onPractice('reader', story.title); }}>朗讀本段故事</button>
     </section>
   );
 }
 
-function UnitCheckCard({ selectedUnit, progress, onComplete }) {
-  const done = progress.completedUnits?.[selectedUnit.id];
-  return (
-    <section className="panel check-panel">
-      <div className="section-title-row">
-        <div>
-          <h2>Check 單元檢核</h2>
-          <p>完成本單元後可獲得星星、貼紙與徽章進度。</p>
-        </div>
-        <span className="big-emoji">✅</span>
-      </div>
-      <ul className="check-list">
-        <li>聽過至少 3 個音型</li>
-        <li>練習過單字卡或互動活動</li>
-        <li>完成一個小遊戲或閱讀任務</li>
-      </ul>
-      <button className="btn primary full" onClick={() => onComplete(selectedUnit.id)}>{done ? '已完成本單元 ⭐' : '完成本單元，獲得星星 ⭐'}</button>
-    </section>
-  );
-}
-
-function PracticeHub({ selectedUnit, onPractice, onMistake }) {
-  if (selectedUnit.id === 'alphabet') return <LetterSoundBoard onPractice={onPractice} />;
-  if (selectedUnit.id === 'short-vowels') return <ShortVowelSort onPractice={onPractice} onMistake={onMistake} />;
-  if (selectedUnit.id === 'cvc') return <InteractiveBlender onPractice={onPractice} />;
-  if (selectedUnit.id === 'word-families') return <WordFamilyTrain onPractice={onPractice} />;
-  if (selectedUnit.id === 'magic-e') return <MagicE onPractice={onPractice} />;
-  return <PatternExplorer unit={selectedUnit} onPractice={onPractice} />;
-}
-
-function LearnView({ selectedUnit, progress, onPractice, onMistake, onComplete }) {
+function LearnView({ unit, stories, progress, onPractice, onComplete }) {
+  const story = stories.find((item) => item.title === unit.storyTitle) || stories[0];
   return (
     <div className="learn-grid">
-      <section className={`panel unit-detail ${selectedUnit.theme}`}>
+      <section className={`panel unit-detail ${unit.theme}`}>
         <div className="section-title-row">
           <div>
-            <h2>{selectedUnit.title}</h2>
-            <p>{selectedUnit.zh}</p>
+            <h2>{unit.title}</h2>
+            <p>{unit.zh}</p>
           </div>
-          <span className="big-emoji">{selectedUnit.icon}</span>
+          <span className="big-emoji">{unit.icon}</span>
         </div>
-        <p className="detail-desc">{selectedUnit.description}</p>
+        <p className="detail-desc">{unit.description}</p>
+        <h3>學習重點</h3>
+        <ul className="check-list">
+          {unit.learnTips.map((tip) => <li key={tip}>{tip}</li>)}
+        </ul>
         <h3>本單元音型</h3>
         <div className="chips large">
-          {selectedUnit.patterns.map((pattern) => <button key={pattern} onClick={() => { speakPattern(pattern); onPractice(selectedUnit.id, pattern); }}>🔊 {pattern}</button>)}
+          {unit.patterns.map((pattern) => <button key={pattern} onClick={() => { speakPattern(pattern); onPractice(unit.id, pattern); }}>🔊 {pattern}</button>)}
         </div>
         <h3>單字卡</h3>
         <div className="word-grid">
-          {selectedUnit.words.map((word) => <button key={word} onClick={() => { speakWord(word); onPractice(selectedUnit.id, word); }}>{word}<span>🔊</span></button>)}
+          {unit.words.map((word) => <button key={word} onClick={() => { speakWord(word); onPractice(unit.id, word); }}>{word}<span>🔊</span></button>)}
         </div>
       </section>
       <div className="stack">
-        <UnitFlow />
-        <PracticeHub selectedUnit={selectedUnit} onPractice={onPractice} onMistake={onMistake} />
-        {selectedUnit.id !== 'cvc' && <InteractiveBlender onPractice={onPractice} />}
-        {selectedUnit.id !== 'magic-e' && selectedUnit.id !== 'alphabet' && <MagicE onPractice={onPractice} />}
-        <UnitReadBridge selectedUnit={selectedUnit} onPractice={onPractice} />
-        <UnitCheckCard selectedUnit={selectedUnit} progress={progress} onComplete={onComplete} />
+        {unit.id === 'alphabet' ? <LetterSoundBoard onPractice={onPractice} /> : null}
+        <InteractiveBlender unit={unit} onPractice={onPractice} />
+        <MagicE unit={unit} onPractice={onPractice} />
+        <section className="panel">
+          <div className="section-title-row">
+            <div>
+              <h2>Read 小故事</h2>
+              <p>學完音型後，立刻讀一小段故事，把拼讀連到閱讀。</p>
+            </div>
+            <span className="big-emoji">📖</span>
+          </div>
+          <p className="story-text bridge-story">{story.text}</p>
+          <div className="chips large">
+            {story.focus.map((word) => <button key={word} onClick={() => { speakWord(word); onPractice('reader', word); }}>{word} 🔊</button>)}
+          </div>
+          <button className="btn secondary" onClick={() => { speakText(story.text); onPractice('reader', story.title); }}>朗讀故事</button>
+        </section>
+        <section className="panel check-panel">
+          <div className="section-title-row">
+            <div>
+              <h2>Check 單元檢核</h2>
+              <p>完成後可獲得 10 顆星星，並解鎖該單元進度。</p>
+            </div>
+            <span className="big-emoji">✅</span>
+          </div>
+          <button className="btn primary full" onClick={() => onComplete(unit.id)}>
+            {progress.completedUnits?.[unit.id] ? '已完成本單元 ⭐' : '完成本單元，獲得星星 ⭐'}
+          </button>
+        </section>
       </div>
     </div>
   );
 }
 
-function MapView({ progress, selectedUnit, setSelectedUnit, setTab, search, setSearch }) {
-  const filteredUnits = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return phonicsUnits;
-    return phonicsUnits.filter((unit) => [unit.title, unit.zh, unit.description, ...unit.patterns, ...unit.words].join(' ').toLowerCase().includes(q));
-  }, [search]);
+function SoundMonsterGame({ onPractice, onMistake }) {
+  function makeRound(previousKey) {
+    let target = alphabetSounds[Math.floor(Math.random() * alphabetSounds.length)];
+    if (previousKey && alphabetSounds.length > 1) {
+      let guard = 0;
+      while (target.key === previousKey && guard < 10) {
+        target = alphabetSounds[Math.floor(Math.random() * alphabetSounds.length)];
+        guard += 1;
+      }
+    }
+    const choices = [...alphabetSounds.filter((item) => item.key !== target.key).sort(() => Math.random() - 0.5).slice(0, 3), target]
+      .sort(() => Math.random() - 0.5);
+    return { target, choices, result: '' };
+  }
+
+  const [round, setRound] = useState(() => makeRound());
 
   return (
-    <section className="map-view">
-      <div className="section-heading">
-        <div>
-          <h2>Phonics Island 學習地圖</h2>
-          <p>學生可以從第一站開始闖關，依序完成字母音、短母音、CVC、blends、digraphs、Magic E、vowel teams 與閱讀小故事。</p>
-        </div>
-        <input className="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜尋 ai, sh, Magic E..." />
-      </div>
-      <div className="unit-grid">
-        {filteredUnits.map((unit, index) => (
-          <UnitCard
-            key={unit.id}
-            unit={unit}
-            selected={selectedUnit.id === unit.id}
-            completed={Boolean(progress.completedUnits?.[unit.id])}
-            locked={index > 8 && !progress.completedUnits?.['vowel-teams']}
-            onClick={() => { setSelectedUnit(unit); setTab('learn'); }}
-          />
+    <div className="game-stage-box">
+      <h3>Sound Monster</h3>
+      <p>按播放，聽 phonics sound，再選正確字母。</p>
+      <button className="monster-button" onClick={() => speakPhonicsSound(round.target.key, false)}>🔊 播放聲音</button>
+      <div className="quiz-options">
+        {round.choices.map((choice) => (
+          <button key={choice.key} className="quiz-choice" onClick={() => {
+            if (choice.key === round.target.key) {
+              speakWord(choice.example);
+              onPractice('sound-monster', choice.example);
+              setRound({ ...round, result: `答對了！${choice.letter} ${choice.symbol}` });
+            } else {
+              onMistake({
+                id: `${Date.now()}-${round.target.key}`,
+                skill: 'Letter sounds',
+                expected: round.target.key,
+                expectedLabel: `${round.target.letter} ${round.target.symbol}`,
+                chosen: choice.key,
+                chosenLabel: `${choice.letter} ${choice.symbol}`,
+                createdAt: new Date().toISOString(),
+              });
+              speakPhonicsSound(round.target.key, true);
+              setRound({ ...round, result: `再試一次：正確答案是 ${round.target.letter.toLowerCase()}` });
+            }
+          }}>
+            <span>{choice.picture}</span>
+            <strong>{choice.letter.toLowerCase()}</strong>
+            <em>{choice.symbol}</em>
+          </button>
         ))}
       </div>
-    </section>
-  );
-}
-
-function makeQuizRound(previousKey) {
-  let target = alphabetSounds[Math.floor(Math.random() * alphabetSounds.length)];
-  if (previousKey && alphabetSounds.length > 1) {
-    let guard = 0;
-    while (target.key === previousKey && guard < 10) {
-      target = alphabetSounds[Math.floor(Math.random() * alphabetSounds.length)];
-      guard += 1;
-    }
-  }
-  const others = alphabetSounds.filter((item) => item.key !== target.key).sort(() => Math.random() - 0.5).slice(0, 3);
-  const choices = [...others, target].sort(() => Math.random() - 0.5);
-  return { target, choices, result: '' };
-}
-
-function SoundMonsterGame({ onPractice, onMistake }) {
-  const [round, setRound] = useState(() => makeQuizRound());
-
-  function playTarget() {
-    speakPhonicsSound(round.target.key, false);
-  }
-
-  function choose(choice) {
-    const correct = choice.key === round.target.key;
-    if (correct) {
-      speakWord(choice.example);
-      onPractice('sound-monster', choice.example);
-      setRound({ ...round, result: `答對了！${choice.letter} says ${choice.symbol} as in ${choice.example}.` });
-    } else {
-      speakPhonicsSound(round.target.key, true);
-      onMistake({
-        id: `${Date.now()}-${round.target.key}`,
-        skill: 'Letter sounds',
-        expected: round.target.key,
-        expectedLabel: `${round.target.letter} ${round.target.symbol}`,
-        chosen: choice.key,
-        chosenLabel: `${choice.letter} ${choice.symbol}`,
-        createdAt: new Date().toISOString(),
-      });
-      setRound({ ...round, result: `再試一次：這個聲音是 ${round.target.letter.toLowerCase()} ${round.target.symbol}，不是 ${choice.letter.toLowerCase()}。` });
-    }
-  }
-
-  function nextRound() {
-    setRound(makeQuizRound(round.target.key));
-  }
-
-  return (
-    <section className="panel monster-panel">
-      <div className="section-title-row">
-        <div>
-          <h2>Sound Monster 聽音選字母</h2>
-          <p>按播放，聽 phonics sound，再選正確字母。答錯會自動加入錯題本。</p>
-        </div>
-        <span className="big-emoji">👾</span>
-      </div>
-      <div className="monster-stage">
-        <button className="monster-button" onClick={playTarget}>🔊 播放聲音</button>
-        <div className="quiz-options">
-          {round.choices.map((choice) => (
-            <button key={choice.key} onClick={() => choose(choice)} className="quiz-choice">
-              <span>{choice.picture}</span>
-              <strong>{choice.letter.toLowerCase()}</strong>
-              <em>{choice.symbol}</em>
-            </button>
-          ))}
-        </div>
-        {round.result && <p className="quiz-result">{round.result}</p>}
-        <button className="btn dark" onClick={nextRound}>下一題</button>
-      </div>
-    </section>
+      {round.result ? <p className="quiz-result">{round.result}</p> : null}
+      <button className="btn dark" onClick={() => setRound(makeRound(round.target.key))}>下一題</button>
+    </div>
   );
 }
 
@@ -646,84 +444,101 @@ function WordTrainGame({ onPractice }) {
   ];
   const [index, setIndex] = useState(0);
   const round = rounds[index];
-
   return (
-    <section className="panel">
-      <div className="section-title-row">
-        <div>
-          <h2>Word Train 單字火車</h2>
-          <p>找出同一家族的單字，讓火車順利出發。</p>
-        </div>
-        <span className="big-emoji">🚂</span>
+    <div className="game-stage-box">
+      <h3>Word Train</h3>
+      <p>只顯示一個遊戲，讓小朋友更專心。請找出屬於 {round.family} 的單字。</p>
+      <div className="option-grid four">
+        {round.choices.map((word) => <button key={word} onClick={() => { speakWord(word); onPractice('word-train', word); }}>{word}</button>)}
       </div>
-      <div className="practice-center">
-        <p>請找出屬於 <strong>{round.family}</strong> 的單字：</p>
-        <div className="option-grid four">
-          {round.choices.map((word) => (
-            <button key={word} onClick={() => { speakWord(word); onPractice('word-train', word); }}>
-              {word}
-            </button>
-          ))}
-        </div>
-        <p className="hint">正確家族：{round.answer.join(', ')}</p>
-        <button className="btn secondary" onClick={() => setIndex((prev) => (prev + 1) % rounds.length)}>換一題</button>
-      </div>
-    </section>
+      <p className="hint">正確家族：{round.answer.join(', ')}</p>
+      <button className="btn secondary" onClick={() => setIndex((index + 1) % rounds.length)}>換一題</button>
+    </div>
   );
 }
 
 function MagicELabGame({ onPractice }) {
   const pairs = [['cap', 'cape'], ['hop', 'hope'], ['cub', 'cube'], ['pin', 'pine']];
-  const [pairIndex, setPairIndex] = useState(0);
+  const [index, setIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
-  const [base, transformed] = pairs[pairIndex];
+  const [base, transformed] = pairs[index];
   return (
-    <section className="panel">
-      <div className="section-title-row">
-        <div>
-          <h2>Magic E Lab</h2>
-          <p>幫短母音單字加上 e，看看它如何變身成長母音單字。</p>
-        </div>
-        <span className="big-emoji">🧪</span>
-      </div>
+    <div className="game-stage-box">
+      <h3>Magic E Lab</h3>
+      <p>幫短母音單字加上 e，看看它如何變身成長母音單字。</p>
       <div className="magic-lab-grid">
-        <button className="practice-word" onClick={() => { speakWord(base); onPractice('magic-e', base); }}>{base}</button>
+        <button className="practice-word" onClick={() => { speakWord(base); onPractice('magic-lab', base); }}>{base}</button>
         <span className="arrow">＋ e →</span>
-        <button className="practice-word success" onClick={() => { speakWord(transformed); onPractice('magic-e', transformed); setShowAnswer(true); }}>
+        <button className="practice-word success" onClick={() => { speakWord(transformed); onPractice('magic-lab', transformed); setShowAnswer(true); }}>
           {showAnswer ? transformed : '????'}
         </button>
       </div>
       <div className="hero-buttons compact">
-        <button className="btn secondary" onClick={() => setShowAnswer(!showAnswer)}>{showAnswer ? '隱藏答案' : '看答案'}</button>
-        <button className="btn dark" onClick={() => { setPairIndex((pairIndex + 1) % pairs.length); setShowAnswer(false); }}>下一組</button>
+        <button className="btn secondary" onClick={() => setShowAnswer((v) => !v)}>{showAnswer ? '隱藏答案' : '看答案'}</button>
+        <button className="btn dark" onClick={() => { setIndex((index + 1) % pairs.length); setShowAnswer(false); }}>下一組</button>
       </div>
-    </section>
+    </div>
   );
 }
 
-function GamesView({ onPractice, onMistake }) {
+function FishingWordsGame({ onPractice }) {
+  const rounds = [
+    { clue: 'sh sound', choices: ['ship', 'cat', 'dog'], answer: 'ship' },
+    { clue: 'long a', choices: ['cake', 'pig', 'sun'], answer: 'cake' },
+  ];
+  const [index, setIndex] = useState(0);
+  const [result, setResult] = useState('');
+  const round = rounds[index];
+  return (
+    <div className="game-stage-box">
+      <h3>Fishing Words</h3>
+      <p>請釣出符合提示的單字：<strong>{round.clue}</strong></p>
+      <div className="option-grid four">
+        {round.choices.map((word) => <button key={word} onClick={() => { speakWord(word); onPractice('fishing', word); setResult(word === round.answer ? '答對了！' : `再試一次，答案是 ${round.answer}`); }}>{word}</button>)}
+      </div>
+      {result ? <p className="quiz-result">{result}</p> : null}
+      <button className="btn secondary" onClick={() => { setIndex((index + 1) % rounds.length); setResult(''); }}>換一題</button>
+    </div>
+  );
+}
+
+function renderGameByType(type, props) {
+  if (type === 'sound-monster') return <SoundMonsterGame {...props} />;
+  if (type === 'word-train') return <WordTrainGame {...props} />;
+  if (type === 'magic-lab') return <MagicELabGame {...props} />;
+  return <FishingWordsGame {...props} />;
+}
+
+function GamesView({ games, onPractice, onMistake }) {
+  const [index, setIndex] = useState(0);
+  const activeGame = games[index] || games[0];
+
   return (
     <section>
       <div className="section-heading simple">
         <div>
           <h2>遊戲練習區</h2>
-          <p>每個遊戲只練一個明確技能，降低操作難度。</p>
+          <p>一次只顯示一個遊戲，避免畫面過度擁擠。</p>
         </div>
       </div>
-      <SoundMonsterGame onPractice={onPractice} onMistake={onMistake} />
-      <div className="game-feature-grid">
-        <WordTrainGame onPractice={onPractice} />
-        <MagicELabGame onPractice={onPractice} />
-      </div>
-      <div className="game-grid">
-        {games.map((game) => (
-          <article className="game-card" key={game.title}>
-            <span className="game-icon">{game.icon}</span>
-            <h3>{game.title}</h3>
-            <p><strong>{game.zh}</strong></p>
-            <p>技能：{game.skill}</p>
-            <button className="btn dark full" onClick={() => onPractice(game.title, game.skill)}>開始挑戰</button>
-          </article>
+      <section className="panel active-game-panel">
+        <div className="section-title-row">
+          <div>
+            <h2>{activeGame.icon} {activeGame.title}</h2>
+            <p>{activeGame.zh} · 技能：{activeGame.skill}</p>
+          </div>
+          <div className="game-nav-inline">
+            <button className="btn secondary small" onClick={() => setIndex((index - 1 + games.length) % games.length)}>上一個</button>
+            <button className="btn secondary small" onClick={() => setIndex((index + 1) % games.length)}>下一個</button>
+          </div>
+        </div>
+        {renderGameByType(activeGame.type, { onPractice, onMistake })}
+      </section>
+      <div className="chips large game-selector">
+        {games.map((game, gameIndex) => (
+          <button key={game.id} className={gameIndex === index ? 'active-chip' : ''} onClick={() => setIndex(gameIndex)}>
+            {game.icon} {game.title}
+          </button>
         ))}
       </div>
     </section>
@@ -733,30 +548,28 @@ function GamesView({ onPractice, onMistake }) {
 function ClickableStory({ text, onPractice }) {
   const tokens = text.split(/(\s+)/);
   return (
-    <p className="story-text clickable-story">
+    <div className="story-text clickable-story">
       {tokens.map((token, index) => {
         if (/^\s+$/.test(token)) return token;
         const clean = token.replace(/[^a-zA-Z]/g, '');
         if (!clean) return token;
         return (
-          <button key={`${token}-${index}`} onClick={() => { speakWord(clean); onPractice('reader', clean); }}>
-            {token}
-          </button>
+          <button key={`${token}-${index}`} onClick={() => { speakWord(clean); onPractice('reader', clean); }}>{token}</button>
         );
       })}
-    </p>
+    </div>
   );
 }
 
-function ReadView({ onPractice }) {
+function ReadView({ stories, onPractice }) {
   return (
     <div className="read-grid">
       <section className="panel">
-        <h2>Sight Words + Decodable Readers</h2>
-        <p>故事只使用學生已學過的音型，讓 Phonics 連到真正閱讀。每個單字都能點擊發音。</p>
+        <h2>Decodable Readers</h2>
+        <p>每個單字都能點擊發音，搭配真人音檔架構與句子朗讀。</p>
         <div className="story-list">
           {stories.map((story) => (
-            <article className="story-card" key={story.title}>
+            <article className="story-card" key={story.id}>
               <div className="story-top">
                 <h3>{story.title}</h3>
                 <span>{story.level}</span>
@@ -765,100 +578,60 @@ function ReadView({ onPractice }) {
               <div className="chips large">
                 {story.focus.map((word) => <button key={word} onClick={() => { speakWord(word); onPractice('reader', word); }}>{word} 🔊</button>)}
               </div>
-              <div className="hero-buttons compact">
-                <button className="btn primary" onClick={() => { speakText(story.text); onPractice('reader', story.title); }}>朗讀全文</button>
-                <button className="btn secondary" onClick={() => onPractice('reader', `quiz-${story.title}`)}>完成小測驗</button>
-              </div>
+              <button className="btn primary" onClick={() => { speakText(story.text); onPractice('reader', story.title); }}>朗讀全文</button>
             </article>
           ))}
         </div>
       </section>
       <section className="panel mic-panel">
         <span className="big-emoji">🎙️</span>
-        <h2>跟讀錄音</h2>
-        <p>正式版可以加入錄音上傳或 Web Speech API 評估。這個原型先保留互動入口與學習紀錄。</p>
+        <h2>跟讀錄音架構</h2>
+        <p>下一步可接入 Web Speech API、錄音上傳，或真人評分機制。此版先保留互動入口。</p>
         <button className="btn pink full" onClick={() => onPractice('recording', 'voice practice')}>按住錄音</button>
       </section>
     </div>
   );
 }
 
-function ReviewView({ progress, onPractice, onClearMistakes }) {
+function ProgressView({ progress, units, onClearMistakes }) {
+  const completedIds = Object.keys(progress.completedUnits || {});
   const frequentWords = Object.entries(progress.practiceWords || {}).sort((a, b) => b[1] - a[1]).slice(0, 6);
-  const reviewWords = progress.mistakes?.slice(-5).map((item) => item.expected).filter(Boolean) || [];
-  const uniqueReview = [...new Set(reviewWords)];
   return (
     <div className="progress-grid">
       <section className="panel passport-panel">
         <div className="section-title-row">
           <div>
             <h2>我的 Phonics Passport</h2>
-            <p>整理已完成單元、星星、今日任務、連續學習天數與常練單字。</p>
+            <p>已完成單元、星星數、連續學習天數、常練單字與每日任務都集中在這裡。</p>
           </div>
           <span className="big-emoji">🛂</span>
         </div>
         <div className="passport-grid">
-          <div><strong>{Object.keys(progress.completedUnits || {}).length}</strong><span>已完成單元</span></div>
-          <div><strong>{progress.stars || 0}</strong><span>星星數</span></div>
-          <div><strong>{progress.streakDays || 0}</strong><span>連續學習天數</span></div>
-          <div><strong>{progress.practiceCount || 0}</strong><span>總練習次數</span></div>
+          <div><strong>{completedIds.length}</strong><span>已完成單元</span></div>
+          <div><strong>{progress.stars}</strong><span>星星數</span></div>
+          <div><strong>{progress.streakDays}</strong><span>連續學習天數</span></div>
+          <div><strong>{progress.practiceCount}</strong><span>練習次數</span></div>
         </div>
         <div className="daily-mission">
           <strong>今日任務</strong>
           <ul>
-            <li>{(progress.practiceCount || 0) >= 3 ? '✅' : '⬜'} 練習 3 次 phonics</li>
-            <li>{(progress.readingLog || 0) >= 1 ? '✅' : '⬜'} 閱讀 1 則小故事</li>
+            <li>{progress.practiceCount >= 3 ? '✅' : '⬜'} 練習 3 次 phonics</li>
+            <li>{progress.readingLog >= 1 ? '✅' : '⬜'} 朗讀 1 篇故事</li>
             <li>{(progress.mistakes?.length || 0) === 0 ? '✅' : '⬜'} 複習最近錯題</li>
           </ul>
         </div>
       </section>
+
       <section className="panel">
         <div className="section-title-row">
           <div>
-            <h2>錯題自動複習</h2>
-            <p>學生常錯的音會自動出現在每日任務。</p>
+            <h2>學習報告</h2>
+            <p>教師與家長可快速看見學生學到哪裡。</p>
           </div>
-          <button className="btn secondary" onClick={onClearMistakes}>清空錯題</button>
+          <span className="big-emoji">📊</span>
         </div>
-        <div className="chips large">
-          {uniqueReview.length ? uniqueReview.map((item) => {
-            const entry = getSoundEntry(item);
-            return <button key={item} onClick={() => { speakPhonicsSound(item, true); onPractice('review', item); }}>{entry?.picture || '🔊'} {item}</button>;
-          }) : <span className="empty-chip">目前沒有錯題，太棒了！</span>}
-        </div>
-        <h3>常練單字</h3>
-        <div className="chips large">
-          {frequentWords.length ? frequentWords.map(([word, count]) => <button key={word} onClick={() => { speakWord(word); onPractice('review', word); }}>{word} · {count}</button>) : <span className="empty-chip">開始練習後，這裡會顯示常練單字。</span>}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function ProgressView({ progress, user, onClearMistakes }) {
-  const completedIds = Object.keys(progress.completedUnits || {});
-  const badges = featuredBadges.map((badge) => [badge.name, badge.icon, progress.badges.includes(badge.key) || completedIds.includes(badge.key)]);
-
-  return (
-    <div className="progress-grid">
-      <section className="panel sync-panel">
-        <span className="big-emoji">☁️</span>
-        <h2>雲端同步設計</h2>
-        <p>學生登入後，進度、星星、錯題與閱讀紀錄會同步到雲端，換電腦也能接續學習。</p>
-        <div className="mini-grid">
-          <div><strong>登入</strong><span>Email / Google 可擴充</span></div>
-          <div><strong>同步</strong><span>Supabase 或 Firebase</span></div>
-          <div><strong>離線</strong><span>本機先存，雲端再同步</span></div>
-          <div><strong>權限</strong><span>學生、家長、教師</span></div>
-        </div>
-        <p className="hint">目前使用者：{user?.email || '未登入'}</p>
-      </section>
-
-      <section className="panel">
-        <h2>學習報告</h2>
-        <p>家長與教師可快速了解學生強弱項。</p>
         <div className="report-list">
-          {phonicsUnits.map((unit, index) => {
+          {units.map((unit, index) => {
             const done = Boolean(progress.completedUnits?.[unit.id]);
             const value = done ? 100 : Math.max(10, 65 - index * 4);
             return (
@@ -875,111 +648,540 @@ function ProgressView({ progress, user, onClearMistakes }) {
         <div className="section-title-row">
           <div>
             <h2>錯題本</h2>
-            <p>答錯的 phonics sound 會出現在這裡，方便每日複習。</p>
+            <p>答錯的聲音會出現在這裡，方便每日複習。</p>
           </div>
-          <span className="big-emoji">📝</span>
+          <button className="btn secondary" onClick={onClearMistakes}>清空錯題</button>
         </div>
         {progress.mistakes?.length ? (
           <div className="mistake-list">
             {progress.mistakes.slice(-8).reverse().map((item) => {
-              const expected = getSoundEntry(item.expected);
+              const entry = getSoundEntry(item.expected);
               return (
                 <div className="mistake-item" key={item.id}>
-                  <button onClick={() => speakPhonicsSound(item.expected, true)}>{expected?.picture || '🔊'}</button>
+                  <button onClick={() => speakPhonicsSound(item.expected, true)}>{entry?.picture || '🔊'}</button>
                   <div>
                     <strong>{item.expectedLabel || item.expected}</strong>
-                    <span>誤選：{item.chosenLabel || item.chosen || '未知'} · {item.skill}</span>
+                    <span>誤選：{item.chosenLabel || item.chosen}</span>
                   </div>
                 </div>
               );
             })}
           </div>
-        ) : <p className="hint">目前沒有錯題，繼續保持！</p>}
-      </section>
-
-      <section className="panel badge-panel teacher-panel">
-        <div className="section-title-row">
-          <div>
-            <h2>教師 / 家長功能示意</h2>
-            <p>正式版可擴充班級排行榜、指派單元、列印 worksheet、匯出報告。</p>
-          </div>
-          <span className="big-emoji">👨‍👩‍👧‍👦</span>
-        </div>
-        <div className="mini-grid teacher-grid">
-          <div><strong>查看學生進度</strong><span>完成率、星星數、連續學習天數</span></div>
-          <div><strong>查看錯題</strong><span>最近常錯的字母音與音型</span></div>
-          <div><strong>指派單元</strong><span>例如 short a、Magic E、Bossy R</span></div>
-          <div><strong>匯出報告</strong><span>可延伸為 CSV / PDF</span></div>
-        </div>
-        <h3>徽章收藏</h3>
-        <div className="badge-grid">
-          {badges.map(([name, icon, earned]) => (
-            <div className={`badge ${earned ? 'earned' : ''}`} key={name}>
-              <span>{icon}</span>
-              <strong>{name}</strong>
-            </div>
-          ))}
+        ) : <p className="hint">目前沒有錯題，太棒了！</p>}
+        <h3>常練單字</h3>
+        <div className="chips large">
+          {frequentWords.length ? frequentWords.map(([word, count]) => <button key={word} onClick={() => speakWord(word)}>{word} × {count}</button>) : <span className="empty-chip">開始練習後會顯示資料</span>}
         </div>
       </section>
     </div>
   );
 }
 
+
+function sanitizeAudioKey(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function AudioUploadManager({ content, setContent }) {
+  const [category, setCategory] = useState('letters');
+  const [audioKey, setAudioKey] = useState('a');
+  const library = content.audioLibrary || { letters: {}, sounds: {}, words: {}, phrases: {} };
+  const currentItems = library[category] || {};
+
+  async function handleFile(file) {
+    if (!file) return;
+    const dataUrl = await readFileAsDataUrl(file);
+    const key = sanitizeAudioKey(audioKey || file.name.replace(/\.mp3$/i, ''));
+    const next = clone(content);
+    next.audioLibrary = next.audioLibrary || { letters: {}, sounds: {}, words: {}, phrases: {} };
+    next.audioLibrary[category] = next.audioLibrary[category] || {};
+    next.audioLibrary[category][key] = {
+      name: file.name,
+      key,
+      category,
+      dataUrl,
+      size: file.size,
+      updatedAt: new Date().toISOString(),
+    };
+    setContent(next);
+  }
+
+  function removeAudio(key) {
+    const next = clone(content);
+    delete next.audioLibrary?.[category]?.[key];
+    setContent(next);
+  }
+
+  function testAudio(key) {
+    if (category === 'letters' || category === 'sounds') speakPhonicsSound(key, true);
+    if (category === 'words') speakWord(key);
+    if (category === 'phrases') speakText(key);
+  }
+
+  return (
+    <div className="admin-form-grid audio-manager">
+      <div className="admin-help-box">
+        <strong>音檔上傳管理</strong>
+        <p>上傳後會先存到網站內容資料中。GitHub Pages 不能直接寫入檔案，所以這版使用 data URL 方式保存；正式大量音檔建議仍放到 <code>public/audio</code> 或 Supabase Storage。</p>
+      </div>
+      <div className="audio-upload-row">
+        <label>
+          類別
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="letters">letters 字母音</option>
+            <option value="sounds">sounds 音型</option>
+            <option value="words">words 單字</option>
+            <option value="phrases">phrases 句子</option>
+          </select>
+        </label>
+        <label>
+          音檔 key，例如 a / sh / cat
+          <input value={audioKey} onChange={(e) => setAudioKey(e.target.value)} />
+        </label>
+        <label>
+          選擇 mp3
+          <input type="file" accept="audio/mpeg,audio/mp3" onChange={(e) => handleFile(e.target.files?.[0])} />
+        </label>
+      </div>
+      <div className="audio-library-list">
+        {Object.keys(currentItems).length ? Object.entries(currentItems).map(([key, item]) => (
+          <div className="audio-row" key={key}>
+            <div>
+              <strong>{key}</strong>
+              <span>{item.name || 'uploaded audio'} · {Math.round((item.size || 0) / 1024)} KB</span>
+            </div>
+            <div className="hero-buttons compact">
+              <button className="btn secondary small" onClick={() => testAudio(key)}>試聽</button>
+              <button className="btn danger small" onClick={() => removeAudio(key)}>刪除</button>
+            </div>
+          </div>
+        )) : <p className="hint">這個類別還沒有上傳音檔。</p>}
+      </div>
+    </div>
+  );
+}
+
+function TeacherView({ content, progress, setContent, onSave }) {
+  const dashboard = content.teacherDashboard || {};
+  const units = content.units || [];
+  const roster = dashboard.roster || [];
+
+  function updateDashboard(patch) {
+    setContent({ ...content, teacherDashboard: { ...dashboard, ...patch } });
+  }
+
+  function toggleAssignment(unitId) {
+    const assignments = new Set(dashboard.assignments || []);
+    if (assignments.has(unitId)) assignments.delete(unitId);
+    else assignments.add(unitId);
+    updateDashboard({ assignments: [...assignments] });
+  }
+
+  return (
+    <div className="progress-grid teacher-dashboard">
+      <section className="panel passport-panel">
+        <div className="section-title-row">
+          <div>
+            <h2>教師後台</h2>
+            <p>查看班級概況、指派單元、查看錯題與管理示範學生名單。</p>
+          </div>
+          <span className="big-emoji">🏫</span>
+        </div>
+        <div className="admin-form-grid">
+          <label>
+            班級名稱
+            <input value={dashboard.className || ''} onChange={(e) => updateDashboard({ className: e.target.value })} />
+          </label>
+          <label>
+            教師備註 / 任務說明
+            <textarea rows="3" value={dashboard.note || ''} onChange={(e) => updateDashboard({ note: e.target.value })} />
+          </label>
+        </div>
+        <div className="passport-grid">
+          <div><strong>{roster.length}</strong><span>學生數</span></div>
+          <div><strong>{dashboard.assignments?.length || 0}</strong><span>已指派單元</span></div>
+          <div><strong>{progress.mistakes?.length || 0}</strong><span>目前帳號錯題</span></div>
+          <div><strong>{progress.stars || 0}</strong><span>目前帳號星星</span></div>
+        </div>
+      </section>
+
+      <section className="panel">
+        <h2>指派單元</h2>
+        <p>勾選要給學生練習的單元。這些設定會跟網站內容一起保存。</p>
+        <div className="unit-assignment-grid">
+          {units.map((unit) => (
+            <button key={unit.id} className={(dashboard.assignments || []).includes(unit.id) ? 'assigned' : ''} onClick={() => toggleAssignment(unit.id)}>
+              <span>{unit.icon}</span>
+              <strong>{unit.zh}</strong>
+              <small>{unit.title}</small>
+            </button>
+          ))}
+        </div>
+        <button className="btn primary" onClick={onSave}>儲存教師設定</button>
+      </section>
+
+      <section className="panel">
+        <h2>班級學生概況</h2>
+        <p>這版先提供示範名單與欄位架構；正式連接全班學生資料時，可再擴充為讀取 Supabase class_students。</p>
+        <div className="teacher-table">
+          <div className="teacher-table-head"><span>學生</span><span>完成</span><span>星星</span><span>錯題</span></div>
+          {roster.map((student, index) => (
+            <div className="teacher-table-row" key={`${student.email}-${index}`}>
+              <span>{student.name}<small>{student.email}</small></span>
+              <span>{student.completed}</span>
+              <span>{student.stars}</span>
+              <span>{student.mistakes}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel mistake-panel">
+        <h2>目前帳號最近錯題</h2>
+        {progress.mistakes?.length ? (
+          <div className="mistake-list">
+            {progress.mistakes.slice(-8).reverse().map((item) => (
+              <div className="mistake-item" key={item.id}>
+                <button onClick={() => speakPhonicsSound(item.expected, true)}>🔊</button>
+                <div><strong>{item.expectedLabel || item.expected}</strong><span>誤選：{item.chosenLabel || item.chosen}</span></div>
+              </div>
+            ))}
+          </div>
+        ) : <p className="hint">目前沒有錯題。</p>}
+      </section>
+    </div>
+  );
+}
+
+function AdminView({ content, setContent, onSave, onReset }) {
+  const [section, setSection] = useState('site');
+  const [unitIndex, setUnitIndex] = useState(0);
+  const [storyIndex, setStoryIndex] = useState(0);
+  const [gameIndex, setGameIndex] = useState(0);
+
+  const currentUnit = content.units[unitIndex] || content.units[0];
+  const currentStory = content.stories[storyIndex] || content.stories[0];
+  const currentGame = content.games[gameIndex] || content.games[0];
+
+  function updateUnit(patch) {
+    const next = clone(content);
+    next.units[unitIndex] = { ...next.units[unitIndex], ...patch };
+    setContent(next);
+  }
+
+  function updateStory(patch) {
+    const next = clone(content);
+    next.stories[storyIndex] = { ...next.stories[storyIndex], ...patch };
+    setContent(next);
+  }
+
+  function updateGame(patch) {
+    const next = clone(content);
+    next.games[gameIndex] = { ...next.games[gameIndex], ...patch };
+    setContent(next);
+  }
+
+  return (
+    <section className="panel admin-panel">
+      <div className="section-title-row">
+        <div>
+          <h2>管理員後台</h2>
+          <p>可以調整版本號、首頁文案、12 個單元、故事、遊戲與管理員名單。資料會先保存到本機，若 Supabase 已建立 <code>site_content</code> 表，也會同步到雲端。</p>
+        </div>
+        <span className="big-emoji">🛠️</span>
+      </div>
+
+      <div className="chips large admin-tabs">
+        {[
+          ['site', '網站設定'],
+          ['units', '單元管理'],
+          ['stories', '故事管理'],
+          ['games', '遊戲管理'],
+          ['audio', '音檔管理'],
+          ['teachers', '教師設定'],
+          ['admins', '管理員名單'],
+        ].map(([key, label]) => <button key={key} className={section === key ? 'active-chip' : ''} onClick={() => setSection(key)}>{label}</button>)}
+      </div>
+
+      {section === 'site' && (
+        <div className="admin-form-grid">
+          <label>
+            版本號
+            <input value={content.version} onChange={(e) => setContent({ ...content, version: e.target.value })} />
+          </label>
+          <label>
+            今日任務文案
+            <input value={content.hero.mission} onChange={(e) => setContent({ ...content, hero: { ...content.hero, mission: e.target.value } })} />
+          </label>
+          <label>
+            首頁標題
+            <input value={content.hero.title} onChange={(e) => setContent({ ...content, hero: { ...content.hero, title: e.target.value } })} />
+          </label>
+          <label>
+            首頁副標
+            <textarea rows="4" value={content.hero.subtitle} onChange={(e) => setContent({ ...content, hero: { ...content.hero, subtitle: e.target.value } })} />
+          </label>
+          <div className="admin-help-box">
+            <strong>真人音檔資料夾規則</strong>
+            <ul>
+              <li>字母：<code>public/audio/letters/a.mp3</code></li>
+              <li>音型：<code>public/audio/sounds/sh.mp3</code></li>
+              <li>單字：<code>public/audio/words/cat.mp3</code></li>
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {section === 'units' && currentUnit && (
+        <div className="admin-split">
+          <div className="admin-list-col">
+            <button className="btn secondary full" onClick={() => {
+              const next = clone(content);
+              next.units.push({
+                id: `unit-${Date.now()}`,
+                level: next.units.length + 1,
+                icon: '✨',
+                theme: 'pink',
+                title: 'New Unit',
+                zh: '新單元',
+                description: '請編輯內容',
+                patterns: ['sample'],
+                words: ['sample'],
+                learnTips: ['sample'],
+                blendingSet: ['sample'],
+                magicEPairs: [['cap', 'cape']],
+                storyTitle: content.stories[0]?.title || '',
+                audioFolder: 'words',
+              });
+              setContent(next);
+              setUnitIndex(next.units.length - 1);
+            }}>新增單元</button>
+            {content.units.map((unit, idx) => <button key={unit.id} className={idx === unitIndex ? 'active-chip' : ''} onClick={() => setUnitIndex(idx)}>{unit.level}. {unit.zh}</button>)}
+            <button className="btn danger full" onClick={() => {
+              if (content.units.length <= 1) return;
+              const next = clone(content);
+              next.units.splice(unitIndex, 1);
+              setContent(next);
+              setUnitIndex(Math.max(0, unitIndex - 1));
+            }}>刪除目前單元</button>
+          </div>
+          <div className="admin-editor-col">
+            <div className="admin-form-grid">
+              <label>id<input value={currentUnit.id} onChange={(e) => updateUnit({ id: e.target.value })} /></label>
+              <label>level<input type="number" value={currentUnit.level} onChange={(e) => updateUnit({ level: Number(e.target.value) || 1 })} /></label>
+              <label>icon<input value={currentUnit.icon} onChange={(e) => updateUnit({ icon: e.target.value })} /></label>
+              <label>theme<input value={currentUnit.theme} onChange={(e) => updateUnit({ theme: e.target.value })} /></label>
+              <label>英文標題<input value={currentUnit.title} onChange={(e) => updateUnit({ title: e.target.value })} /></label>
+              <label>中文標題<input value={currentUnit.zh} onChange={(e) => updateUnit({ zh: e.target.value })} /></label>
+              <label>描述<textarea rows="3" value={currentUnit.description} onChange={(e) => updateUnit({ description: e.target.value })} /></label>
+              <label>learnTips（逗號或換行分隔）<textarea rows="3" value={currentUnit.learnTips.join('\n')} onChange={(e) => updateUnit({ learnTips: splitLines(e.target.value) })} /></label>
+              <label>patterns（逗號或換行分隔）<textarea rows="4" value={currentUnit.patterns.join('\n')} onChange={(e) => updateUnit({ patterns: splitLines(e.target.value) })} /></label>
+              <label>words（逗號或換行分隔）<textarea rows="4" value={currentUnit.words.join('\n')} onChange={(e) => updateUnit({ words: splitLines(e.target.value) })} /></label>
+              <label>blendingSet（逗號或換行分隔）<textarea rows="3" value={currentUnit.blendingSet.join('\n')} onChange={(e) => updateUnit({ blendingSet: splitLines(e.target.value) })} /></label>
+              <label>magicEPairs（每行一組，格式 cap|cape）<textarea rows="4" value={pairsToText(currentUnit.magicEPairs)} onChange={(e) => updateUnit({ magicEPairs: pairLinesToArray(e.target.value) })} /></label>
+              <label>storyTitle<input value={currentUnit.storyTitle || ''} onChange={(e) => updateUnit({ storyTitle: e.target.value })} /></label>
+              <label>audioFolder<input value={currentUnit.audioFolder || ''} onChange={(e) => updateUnit({ audioFolder: e.target.value })} /></label>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {section === 'stories' && currentStory && (
+        <div className="admin-split">
+          <div className="admin-list-col">
+            <button className="btn secondary full" onClick={() => {
+              const next = clone(content);
+              next.stories.push({ id: `story-${Date.now()}`, title: 'New Story', level: 'New Level', text: 'Write your story.', focus: ['word'] });
+              setContent(next);
+              setStoryIndex(next.stories.length - 1);
+            }}>新增故事</button>
+            {content.stories.map((story, idx) => <button key={story.id} className={idx === storyIndex ? 'active-chip' : ''} onClick={() => setStoryIndex(idx)}>{story.title}</button>)}
+            <button className="btn danger full" onClick={() => {
+              if (content.stories.length <= 1) return;
+              const next = clone(content);
+              next.stories.splice(storyIndex, 1);
+              setContent(next);
+              setStoryIndex(Math.max(0, storyIndex - 1));
+            }}>刪除目前故事</button>
+          </div>
+          <div className="admin-editor-col">
+            <div className="admin-form-grid">
+              <label>id<input value={currentStory.id} onChange={(e) => updateStory({ id: e.target.value })} /></label>
+              <label>標題<input value={currentStory.title} onChange={(e) => updateStory({ title: e.target.value })} /></label>
+              <label>level<input value={currentStory.level} onChange={(e) => updateStory({ level: e.target.value })} /></label>
+              <label>focus words<textarea rows="3" value={currentStory.focus.join('\n')} onChange={(e) => updateStory({ focus: splitLines(e.target.value) })} /></label>
+              <label>故事本文<textarea rows="8" value={currentStory.text} onChange={(e) => updateStory({ text: e.target.value })} /></label>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {section === 'games' && currentGame && (
+        <div className="admin-split">
+          <div className="admin-list-col">
+            <button className="btn secondary full" onClick={() => {
+              const next = clone(content);
+              next.games.push({ id: `game-${Date.now()}`, title: 'New Game', zh: '新遊戲', icon: '🎮', skill: '新技能', type: 'sound-monster' });
+              setContent(next);
+              setGameIndex(next.games.length - 1);
+            }}>新增遊戲</button>
+            {content.games.map((game, idx) => <button key={game.id} className={idx === gameIndex ? 'active-chip' : ''} onClick={() => setGameIndex(idx)}>{game.title}</button>)}
+            <button className="btn danger full" onClick={() => {
+              if (content.games.length <= 1) return;
+              const next = clone(content);
+              next.games.splice(gameIndex, 1);
+              setContent(next);
+              setGameIndex(Math.max(0, gameIndex - 1));
+            }}>刪除目前遊戲</button>
+          </div>
+          <div className="admin-editor-col">
+            <div className="admin-form-grid">
+              <label>id<input value={currentGame.id} onChange={(e) => updateGame({ id: e.target.value })} /></label>
+              <label>icon<input value={currentGame.icon} onChange={(e) => updateGame({ icon: e.target.value })} /></label>
+              <label>title<input value={currentGame.title} onChange={(e) => updateGame({ title: e.target.value })} /></label>
+              <label>zh<input value={currentGame.zh} onChange={(e) => updateGame({ zh: e.target.value })} /></label>
+              <label>skill<input value={currentGame.skill} onChange={(e) => updateGame({ skill: e.target.value })} /></label>
+              <label>type
+                <select value={currentGame.type} onChange={(e) => updateGame({ type: e.target.value })}>
+                  <option value="sound-monster">sound-monster</option>
+                  <option value="word-train">word-train</option>
+                  <option value="magic-lab">magic-lab</option>
+                  <option value="fishing">fishing</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {section === 'audio' && (
+        <AudioUploadManager content={content} setContent={setContent} />
+      )}
+
+      {section === 'teachers' && (
+        <div className="admin-form-grid">
+          <label>
+            教師 Email（每行一個）
+            <textarea rows="5" value={(content.teacherEmails || []).join('\n')} onChange={(e) => setContent({ ...content, teacherEmails: splitLines(e.target.value) })} />
+          </label>
+          <label>
+            班級名稱
+            <input value={content.teacherDashboard?.className || ''} onChange={(e) => setContent({ ...content, teacherDashboard: { ...(content.teacherDashboard || {}), className: e.target.value } })} />
+          </label>
+          <label>
+            教師備註 / 任務說明
+            <textarea rows="3" value={content.teacherDashboard?.note || ''} onChange={(e) => setContent({ ...content, teacherDashboard: { ...(content.teacherDashboard || {}), note: e.target.value } })} />
+          </label>
+          <div className="admin-help-box">
+            <strong>教師後台說明</strong>
+            <ul>
+              <li>教師登入後會看到「教師」分頁。</li>
+              <li>教師可以查看班級概況、指派單元、查看目前帳號錯題。</li>
+              <li>正式全班資料同步可在下一版接 class_students 與全班 progress 查詢。</li>
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {section === 'admins' && (
+        <div className="admin-form-grid">
+          <label>
+            管理員 Email（每行一個）
+            <textarea rows="6" value={(content.adminEmails || []).join('\n')} onChange={(e) => setContent({ ...content, adminEmails: splitLines(e.target.value) })} />
+          </label>
+          <div className="admin-help-box">
+            <strong>使用說明</strong>
+            <ul>
+              <li>請先用一般帳號登入。</li>
+              <li>把自己的 Email 加到管理員名單，儲存後重新登入即可看到後台。</li>
+              <li>若使用 Supabase，請執行 <code>database/supabase_admin.sql</code> 啟用雲端內容管理。</li>
+            </ul>
+          </div>
+        </div>
+      )}
+
+      <div className="hero-buttons compact admin-actions">
+        <button className="btn primary" onClick={onSave}>儲存網站內容</button>
+        <button className="btn secondary" onClick={onReset}>重設為預設內容</button>
+      </div>
+    </section>
+  );
+}
+
 export default function App() {
   const [tab, setTab] = useState('map');
-  const [selectedUnit, setSelectedUnit] = useState(phonicsUnits[0]);
   const [search, setSearch] = useState('');
+  const [siteContent, setSiteContent] = useState(defaultSiteContent);
+  const [selectedUnitId, setSelectedUnitId] = useState(defaultSiteContent.units[0].id);
   const [user, setUser] = useState(null);
   const [progress, setProgress] = useState(defaultProgress);
   const [message, setMessage] = useState('歡迎來到 Phonics Adventure！');
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let mounted = true;
     async function init() {
-      const currentUser = await getCurrentUser();
-      const remoteProgress = await loadProgress();
+      const [content, currentUser, remoteProgress] = await Promise.all([loadSiteContent(), getCurrentUser(), loadProgress()]);
       if (!mounted) return;
+      const mergedContent = mergeSiteContent(content);
+      setSiteContent(mergedContent);
+      setAudioLibrary(mergedContent.audioLibrary || {});
+      setSelectedUnitId(mergedContent.units[0]?.id || 'alphabet');
       setUser(currentUser);
       setProgress(mergeProgress(remoteProgress));
+      setReady(true);
     }
     init();
     return () => { mounted = false; };
   }, []);
 
   useEffect(() => {
+    setAudioLibrary(siteContent.audioLibrary || {});
+  }, [siteContent.audioLibrary]);
+
+  useEffect(() => {
+    if (!ready) return undefined;
     const timer = setTimeout(() => {
       saveProgress(progress).catch((error) => console.warn('saveProgress failed', error));
     }, 300);
     return () => clearTimeout(timer);
-  }, [progress]);
+  }, [progress, ready]);
+
+  const units = siteContent.units || [];
+  const stories = siteContent.stories || [];
+  const games = siteContent.games || [];
+  const selectedUnit = units.find((unit) => unit.id === selectedUnitId) || units[0];
+  const isAdmin = isAdminUser(user, siteContent);
+  const isTeacher = isTeacherUser(user, siteContent);
 
   function handlePractice(skill, word = '') {
     setProgress((prev) => mergeProgress(updatePracticeProgress(prev, skill, word)));
   }
 
   function handleComplete(unitId) {
-    const selected = phonicsUnits.find((unit) => unit.id === unitId);
+    const unit = units.find((item) => item.id === unitId);
     setProgress((prev) => {
       const next = mergeProgress(prev);
       const alreadyDone = Boolean(next.completedUnits?.[unitId]);
       next.completedUnits = { ...next.completedUnits, [unitId]: true };
       if (!alreadyDone) next.stars += 10;
       next.badges = addBadgeIfNeeded(next, unitId);
-      if (unitId === 'alphabet' || unitId === 'cvc' || unitId === 'magic-e' || unitId === 'r-controlled') {
-        next.badges = addBadgeIfNeeded(next, unitId);
-      }
-      if ((next.readingLog || 0) > 0) next.badges = addBadgeIfNeeded(next, 'reader');
-      return { ...next };
+      return next;
     });
-    setMessage(`太棒了！你完成了 ${selected?.zh || unitId}，獲得 10 顆星星。`);
+    setMessage(`已完成 ${unit?.zh || unitId}，獲得 10 顆星星！`);
   }
 
   function handleMistake(item) {
-    setProgress((prev) => {
-      const next = mergeProgress(prev);
-      next.mistakes = [...next.mistakes, item].slice(-30);
-      return { ...next };
-    });
+    setProgress((prev) => ({ ...mergeProgress(prev), mistakes: [...(prev.mistakes || []), item].slice(-30) }));
   }
 
   function handleClearMistakes() {
@@ -987,8 +1189,35 @@ export default function App() {
     setMessage('已清空錯題本。');
   }
 
-  const completedCount = Object.keys(progress.completedUnits || {}).length;
-  const frequentWords = Object.entries(progress.practiceWords || {}).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  async function handleAuth(nextUser, text) {
+    if (nextUser) setUser(nextUser);
+    setMessage(text);
+    if (nextUser) {
+      const remoteProgress = await loadProgress();
+      setProgress(mergeProgress(remoteProgress));
+    }
+  }
+
+  async function handleSignOut() {
+    await signOut();
+    setUser(null);
+    setMessage('已登出。');
+  }
+
+  async function handleSaveContent() {
+    const merged = await saveSiteContent(siteContent);
+    setSiteContent(merged);
+    setMessage('網站內容已儲存。');
+  }
+
+  function handleResetContent() {
+    const restored = resetSiteContent();
+    setSiteContent(restored);
+    setSelectedUnitId(restored.units[0]?.id || 'alphabet');
+    setMessage('已重設為預設內容。');
+  }
+
+  const percent = completedPercent(progress, units.length || 12);
 
   return (
     <div className="app-shell">
@@ -997,70 +1226,60 @@ export default function App() {
           <div className="logo">🦊</div>
           <div>
             <h1>Phonics Adventure</h1>
-            <p>英文自然發音冒險島</p>
+            <p>英文自然發音冒險</p>
           </div>
         </div>
         <nav>
           {[
             ['map', '學習地圖'],
             ['learn', '學習'],
-            ['review', '複習練習'],
             ['games', '遊戲'],
             ['read', '閱讀'],
             ['progress', '進度'],
-          ].map(([key, label]) => (
-            <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}</button>
-          ))}
+            ...(isTeacher ? [['teacher', '教師']] : []),
+            ...(isAdmin ? [['admin', '管理']] : []),
+          ].map(([key, label]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}</button>)}
         </nav>
-        <div className="student-pill">⭐ {progress.stars} Stars</div>
+        <div className="topbar-right">
+          <UserMenu user={user} isAdmin={isAdmin} isTeacher={isTeacher} onAuth={handleAuth} onSignOut={handleSignOut} message={message} />
+          <div className="student-pill">⭐ {progress.stars} Stars</div>
+        </div>
       </header>
 
       <main>
-        <section className="hero">
+        <section className="hero compact-hero">
           <div className="hero-copy">
-            <div className="notice">✨ 今日任務：完成 2 次練習 + 1 次閱讀</div>
-            <h2>Phonics Island / 自然發音島</h2>
-            <p>這個網站以遊戲化學習地圖為核心，從字母音、短母音、CVC、單字家族、子音混合、二合字母，到 Magic E、長母音、vowel teams、Bossy R、雙母音與閱讀故事，讓學生像闖關一樣完成完整 phonics 旅程。</p>
-            <HeroActions setTab={setTab} />
+            <div className="hero-topline">
+              <span className="notice">{siteContent.hero.mission}</span>
+              <span className="version-pill">版本 {siteContent.version}</span>
+            </div>
+            <h2>{siteContent.hero.title}</h2>
+            <p>{siteContent.hero.subtitle}</p>
+            <div className="hero-buttons four">
+              <button className="btn dark" onClick={() => setTab('learn')}>開始學習</button>
+              <button className="btn secondary" onClick={() => setTab('map')}>學習地圖</button>
+              <button className="btn pink" onClick={() => setTab('games')}>玩遊戲</button>
+              <button className="btn primary" onClick={() => setTab('progress')}>我的進度</button>
+            </div>
           </div>
-          <div className="hero-side">
-            <ProgressCircle progress={progress} />
-            <div className="summary-card"><strong>{completedCount}</strong><span>已完成單元</span></div>
+          <div className="hero-side compact">
+            <ProgressCircle progress={progress} total={units.length || 12} />
+            <div className="summary-card"><strong>{Object.keys(progress.completedUnits || {}).length}</strong><span>已完成單元</span></div>
             <div className="summary-card"><strong>{progress.streakDays || 0}</strong><span>連續學習天數</span></div>
             <div className="summary-card"><strong>{progress.mistakes?.length || 0}</strong><span>錯題待複習</span></div>
+            <div className="summary-card"><strong>{percent}%</strong><span>總完成率</span></div>
           </div>
         </section>
 
         <div className="message-strip">{message}</div>
 
-        <section className="dashboard-grid">
-          <AuthPanel user={user} onUserChange={setUser} onMessage={setMessage} />
-          <section className="panel overview-panel">
-            <div className="section-title-row">
-              <div>
-                <h2>首頁快速入口</h2>
-                <p>畫面採用明亮、圓角、可愛且圖案豐富的卡片式設計，並把學習、遊戲、閱讀與進度分區清楚呈現。</p>
-              </div>
-              <span className="big-emoji">🦉</span>
-            </div>
-            <div className="mini-grid big-links">
-              <button onClick={() => setTab('learn')}><strong>開始學習</strong><span>進入目前單元與互動拼讀板</span></button>
-              <button onClick={() => setTab('review')}><strong>複習練習</strong><span>查看錯題本與每日任務</span></button>
-              <button onClick={() => setTab('games')}><strong>玩遊戲</strong><span>Sound Monster、Word Train、Magic E Lab</span></button>
-              <button onClick={() => setTab('progress')}><strong>我的進度</strong><span>Phonics Passport、徽章與報告</span></button>
-            </div>
-            <div className="chips large">
-              {frequentWords.length ? frequentWords.map(([word, count]) => <span key={word}>{word} × {count}</span>) : <span>開始練習後會顯示常練單字</span>}
-            </div>
-          </section>
-        </section>
-
-        {tab === 'map' && <MapView progress={progress} selectedUnit={selectedUnit} setSelectedUnit={setSelectedUnit} setTab={setTab} search={search} setSearch={setSearch} />}
-        {tab === 'learn' && <LearnView selectedUnit={selectedUnit} progress={progress} onPractice={handlePractice} onMistake={handleMistake} onComplete={handleComplete} />}
-        {tab === 'review' && <ReviewView progress={progress} onPractice={handlePractice} onClearMistakes={handleClearMistakes} />}
-        {tab === 'games' && <GamesView onPractice={handlePractice} onMistake={handleMistake} />}
-        {tab === 'read' && <ReadView onPractice={handlePractice} />}
-        {tab === 'progress' && <ProgressView progress={progress} user={user} onClearMistakes={handleClearMistakes} />}
+        {tab === 'map' && <MapView units={units} progress={progress} selectedUnit={selectedUnit} setSelectedUnit={(unit) => setSelectedUnitId(unit.id)} setTab={setTab} search={search} setSearch={setSearch} />}
+        {tab === 'learn' && selectedUnit && <LearnView unit={selectedUnit} stories={stories} progress={progress} onPractice={handlePractice} onComplete={handleComplete} />}
+        {tab === 'games' && <GamesView games={games} onPractice={handlePractice} onMistake={handleMistake} />}
+        {tab === 'read' && <ReadView stories={stories} onPractice={handlePractice} />}
+        {tab === 'progress' && <ProgressView progress={progress} units={units} onClearMistakes={handleClearMistakes} />}
+        {tab === 'teacher' && isTeacher && <TeacherView content={siteContent} progress={progress} setContent={setSiteContent} onSave={handleSaveContent} />}
+        {tab === 'admin' && isAdmin && <AdminView content={siteContent} setContent={setSiteContent} onSave={handleSaveContent} onReset={handleResetContent} />}
       </main>
     </div>
   );

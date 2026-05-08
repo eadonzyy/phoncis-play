@@ -262,3 +262,12 @@ phonics-adventure/
 - 錄音跟讀
 - 單字音檔 CDN
 - 更多 decodable readers
+
+## v1.4 新功能
+
+- 新增教師後台：教師可查看班級概況、指派單元、查看目前帳號錯題。
+- 新增管理員音檔上傳管理：可在後台上傳 letters / sounds / words / phrases 類別 mp3。
+- 新增環境變數：`VITE_ADMIN_EMAILS`、`VITE_TEACHER_EMAILS`。
+- 若使用 Supabase 後台雲端內容管理，請執行 `database/supabase_admin.sql`。
+
+GitHub Pages 是靜態網站；後台上傳音檔會保存成 data URL。大量音檔建議放入 `public/audio/` 後重新部署，或改接 Supabase Storage。

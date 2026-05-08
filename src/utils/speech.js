@@ -1,5 +1,21 @@
 import { getSoundEntry } from '../data/sounds.js';
 
+let uploadedAudioLibrary = {
+  letters: {},
+  sounds: {},
+  words: {},
+  phrases: {},
+};
+
+export function setAudioLibrary(library = {}) {
+  uploadedAudioLibrary = {
+    letters: library.letters || {},
+    sounds: library.sounds || {},
+    words: library.words || {},
+    phrases: library.phrases || {},
+  };
+}
+
 function getEnglishVoice() {
   if (!('speechSynthesis' in window)) return null;
   const voices = window.speechSynthesis.getVoices?.() || [];
@@ -27,7 +43,7 @@ function queueSpeak(parts, { rate = 0.72, pitch = 1.05 } = {}) {
     if (voice) utterance.voice = voice;
     utterance.onend = () => {
       index += 1;
-      window.setTimeout(playNext, 100);
+      window.setTimeout(playNext, 90);
     };
     window.speechSynthesis.speak(utterance);
   };
@@ -35,12 +51,65 @@ function queueSpeak(parts, { rate = 0.72, pitch = 1.05 } = {}) {
   playNext();
 }
 
+function sanitizeKey(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+}
+
+function getUploadedAudio(category, key) {
+  const item = uploadedAudioLibrary?.[category]?.[sanitizeKey(key)];
+  if (!item) return '';
+  if (typeof item === 'string') return item;
+  return item.dataUrl || item.url || '';
+}
+
+function playAudioFile(path) {
+  return new Promise((resolve, reject) => {
+    if (!path) {
+      reject(new Error('No audio path'));
+      return;
+    }
+    const audio = new Audio(path);
+    let settled = false;
+    audio.oncanplaythrough = () => {
+      audio.play().then(() => {
+        settled = true;
+        resolve(true);
+      }).catch(reject);
+    };
+    audio.onerror = () => {
+      if (!settled) reject(new Error(`Audio not found: ${path.slice(0, 60)}`));
+    };
+  });
+}
+
+async function speakOrPlay(pathCandidates, fallback) {
+  for (const path of pathCandidates) {
+    try {
+      await playAudioFile(path);
+      return;
+    } catch (error) {
+      // Try next audio source, then fall back to browser voice.
+    }
+  }
+  fallback();
+}
+
 export function speakText(text, options = {}) {
-  queueSpeak([text], { rate: options.rate || 0.78, pitch: options.pitch || 1 });
+  const key = sanitizeKey(text).slice(0, 80);
+  speakOrPlay([
+    getUploadedAudio('phrases', key),
+    `${import.meta.env.BASE_URL}audio/phrases/${key}.mp3`,
+  ], () => queueSpeak([text], { rate: options.rate || 0.78, pitch: options.pitch || 1 }));
 }
 
 export function speakWord(word) {
-  queueSpeak([word], { rate: 0.72, pitch: 1 });
+  const key = sanitizeKey(word);
+  speakOrPlay([
+    getUploadedAudio('words', key),
+    `${import.meta.env.BASE_URL}audio/words/${key}.mp3`,
+    getUploadedAudio('phrases', key),
+    `${import.meta.env.BASE_URL}audio/phrases/${key}.mp3`,
+  ], () => queueSpeak([word], { rate: 0.72, pitch: 1 }));
 }
 
 export function speakPhonicsSound(key, includeExample = true) {
@@ -49,11 +118,19 @@ export function speakPhonicsSound(key, includeExample = true) {
     speakWord(key);
     return;
   }
-
-  const parts = includeExample
-    ? [entry.sayAs, `${entry.example}.`, `${entry.sayAs}.`]
-    : [entry.sayAs];
-  queueSpeak(parts, { rate: 0.62, pitch: 1.08 });
+  const folder = entry.key.length === 1 ? 'letters' : 'sounds';
+  const soundKey = sanitizeKey(entry.key);
+  const exampleKey = sanitizeKey(entry.example);
+  const fallback = () => {
+    const parts = includeExample ? [entry.sayAs, `${entry.example}.`, `${entry.sayAs}.`] : [entry.sayAs];
+    queueSpeak(parts, { rate: 0.62, pitch: 1.08 });
+  };
+  speakOrPlay([
+    getUploadedAudio(folder, soundKey),
+    `${import.meta.env.BASE_URL}audio/${folder}/${soundKey}.mp3`,
+    includeExample ? getUploadedAudio('words', exampleKey) : '',
+    includeExample ? `${import.meta.env.BASE_URL}audio/words/${exampleKey}.mp3` : '',
+  ].filter(Boolean), fallback);
 }
 
 export function speakBlendWord(word) {
