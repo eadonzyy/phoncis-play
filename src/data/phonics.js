@@ -3,7 +3,7 @@ export const phonicsUnits = [
     id: 'alphabet', level: 1, icon: '🔤', title: 'Alphabet Sounds', zh: '字母與字母音', theme: 'pink',
     description: '認識 A-Z 的字母名稱、字母音與代表單字。',
     patterns: ['a /æ/', 'b /b/', 'c /k/', 'd /d/', 'e /e/', 'f /f/', 'g /g/', 'h /h/', 'i /ɪ/', 'j /dʒ/', 'k /k/', 'l /l/', 'm /m/', 'n /n/', 'o /ɒ/', 'p /p/', 'q /kw/', 'r /r/', 's /s/', 't /t/', 'u /ʌ/', 'v /v/', 'w /w/', 'x /ks/', 'y /j/', 'z /z/'],
-    words: ['apple', 'bear', 'cat', 'dog', 'egg', 'fish', 'goat', 'hat', 'igloo', 'jam']
+    words: ['apple', 'bear', 'cat', 'dog', 'egg', 'fish', 'goat', 'hat', 'igloo', 'jam', 'kite', 'lion', 'moon', 'nest', 'octopus', 'pig', 'queen', 'rabbit', 'sun', 'tiger', 'umbrella', 'van', 'web', 'fox', 'yak', 'zebra']
   },
   {
     id: 'short-vowels', level: 2, icon: '🍎', title: 'Short Vowels', zh: '短母音', theme: 'orange',

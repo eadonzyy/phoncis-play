@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { phonicsUnits, stories, games } from './data/phonics.js';
+import { alphabetSounds, getSoundEntry, getSoundSymbol } from './data/sounds.js';
+import { speakText, speakWord, speakPhonicsSound, speakBlendWord, speakPattern } from './utils/speech.js';
 import { getCurrentUser, getProviderStatus, loadProgress, saveProgress, signIn, signOut, signUp } from './services/syncService.js';
 
 const defaultProgress = {
@@ -9,19 +11,6 @@ const defaultProgress = {
   badges: [],
   lastPracticed: null,
 };
-
-const soundMap = {
-  c: '/k/', a: '/æ/', t: '/t/', m: '/m/', p: '/p/', i: '/ɪ/', g: '/g/', d: '/d/', o: '/ɒ/', b: '/b/', u: '/ʌ/', s: '/s/', f: '/f/', h: '/h/', r: '/r/', n: '/n/', e: '/e/', l: '/l/'
-};
-
-function speak(text) {
-  if (!('speechSynthesis' in window)) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'en-US';
-  utterance.rate = 0.8;
-  window.speechSynthesis.speak(utterance);
-}
 
 function mergeProgress(remote) {
   return {
@@ -130,11 +119,11 @@ function InteractiveBlender({ onPractice }) {
   const letters = word.split('');
 
   function playLetter(letter) {
-    speak(letter);
+    speakPhonicsSound(letter, true);
   }
 
   function blend() {
-    speak(word);
+    speakBlendWord(word);
     onPractice('cvc');
   }
 
@@ -151,7 +140,7 @@ function InteractiveBlender({ onPractice }) {
         {letters.map((letter, index) => (
           <button className="letter-tile" key={`${letter}-${index}`} onClick={() => playLetter(letter)}>
             <strong>{letter}</strong>
-            <span>{soundMap[letter] || '/?/'}</span>
+            <span>{getSoundSymbol(letter)}</span>
           </button>
         ))}
         <span className="arrow">→</span>
@@ -179,7 +168,7 @@ function MagicE({ onPractice }) {
   function toggleMagic() {
     const next = !magic;
     setMagic(next);
-    speak(next ? pair[1] : pair[0]);
+    speakWord(next ? pair[1] : pair[0]);
     onPractice('magic-e');
   }
 
@@ -206,6 +195,37 @@ function MagicE({ onPractice }) {
   );
 }
 
+
+function LetterSoundBoard({ onPractice }) {
+  return (
+    <section className="panel sound-board-panel">
+      <div className="section-title-row">
+        <div>
+          <h2>Letter Sound Board 字母音板</h2>
+          <p>這裡點 A-Z 會讀 phonics sound，不再讀字母名稱。每張卡都有 IPA 與代表單字。</p>
+        </div>
+        <span className="big-emoji">🔤</span>
+      </div>
+      <div className="sound-board-grid">
+        {alphabetSounds.map((item) => (
+          <button
+            className="sound-card"
+            key={item.key}
+            onClick={() => { speakPhonicsSound(item.key, true); onPractice('alphabet'); }}
+            title={`${item.letter} ${item.symbol} ${item.example}`}
+          >
+            <span className="sound-picture">{item.picture}</span>
+            <strong>{item.letter.toLowerCase()}</strong>
+            <em>{item.symbol}</em>
+            <small>{item.example}</small>
+          </button>
+        ))}
+      </div>
+      <p className="hint">說明：瀏覽器語音不是專業錄音，這版會用近似音 + 代表單字處理，例如 a 會播放「ă / apple」，不是字母名 A。之後可再換成真人 mp3 音檔。</p>
+    </section>
+  );
+}
+
 function LearnView({ selectedUnit, onPractice, onComplete }) {
   return (
     <div className="learn-grid">
@@ -220,15 +240,16 @@ function LearnView({ selectedUnit, onPractice, onComplete }) {
         <p className="detail-desc">{selectedUnit.description}</p>
         <h3>本單元音型</h3>
         <div className="chips large">
-          {selectedUnit.patterns.map((pattern) => <button key={pattern} onClick={() => speak(pattern.replace(/[/:→-]/g, ' '))}>🔊 {pattern}</button>)}
+          {selectedUnit.patterns.map((pattern) => <button key={pattern} onClick={() => { speakPattern(pattern); onPractice(selectedUnit.id); }}>🔊 {pattern}</button>)}
         </div>
         <h3>單字卡</h3>
         <div className="word-grid">
-          {selectedUnit.words.map((word) => <button key={word} onClick={() => speak(word)}>{word}<span>🔊</span></button>)}
+          {selectedUnit.words.map((word) => <button key={word} onClick={() => { speakWord(word); onPractice(selectedUnit.id); }}>{word}<span>🔊</span></button>)}
         </div>
         <button className="btn primary full" onClick={() => onComplete(selectedUnit.id)}>完成本單元，獲得星星 ⭐</button>
       </section>
       <div className="stack">
+        {selectedUnit.id === 'alphabet' && <LetterSoundBoard onPractice={onPractice} />}
         <InteractiveBlender onPractice={onPractice} />
         <MagicE onPractice={onPractice} />
       </div>
@@ -268,7 +289,84 @@ function MapView({ progress, selectedUnit, setSelectedUnit, setTab, search, setS
   );
 }
 
-function GamesView({ onPractice }) {
+
+function makeQuizRound(previousKey) {
+  let target = alphabetSounds[Math.floor(Math.random() * alphabetSounds.length)];
+  if (previousKey && alphabetSounds.length > 1) {
+    let guard = 0;
+    while (target.key === previousKey && guard < 10) {
+      target = alphabetSounds[Math.floor(Math.random() * alphabetSounds.length)];
+      guard += 1;
+    }
+  }
+  const others = alphabetSounds
+    .filter((item) => item.key !== target.key)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 3);
+  const choices = [...others, target].sort(() => Math.random() - 0.5);
+  return { target, choices, answered: false, result: '' };
+}
+
+function SoundMonsterGame({ onPractice, onMistake }) {
+  const [round, setRound] = useState(() => makeQuizRound());
+
+  function playTarget() {
+    speakPhonicsSound(round.target.key, false);
+  }
+
+  function choose(choice) {
+    const correct = choice.key === round.target.key;
+    if (correct) {
+      speakWord(choice.example);
+      onPractice('sound-monster');
+      setRound({ ...round, answered: true, result: `答對了！${choice.letter} says ${choice.symbol} as in ${choice.example}.` });
+    } else {
+      speakPhonicsSound(round.target.key, true);
+      onMistake({
+        id: `${Date.now()}-${round.target.key}`,
+        skill: 'Letter sounds',
+        expected: round.target.key,
+        expectedLabel: `${round.target.letter} ${round.target.symbol}`,
+        chosen: choice.key,
+        chosenLabel: `${choice.letter} ${choice.symbol}`,
+        createdAt: new Date().toISOString(),
+      });
+      setRound({ ...round, answered: true, result: `再試一次：這個聲音是 ${round.target.letter.toLowerCase()} ${round.target.symbol}，不是 ${choice.letter.toLowerCase()}。` });
+    }
+  }
+
+  function nextRound() {
+    setRound(makeQuizRound(round.target.key));
+  }
+
+  return (
+    <section className="panel monster-panel">
+      <div className="section-title-row">
+        <div>
+          <h2>Sound Monster 聽音選字母</h2>
+          <p>按播放，聽 phonics sound，再選正確字母。答錯會自動加入錯題本。</p>
+        </div>
+        <span className="big-emoji">👾</span>
+      </div>
+      <div className="monster-stage">
+        <button className="monster-button" onClick={playTarget}>🔊 播放聲音</button>
+        <div className="quiz-options">
+          {round.choices.map((choice) => (
+            <button key={choice.key} onClick={() => choose(choice)} className="quiz-choice">
+              <span>{choice.picture}</span>
+              <strong>{choice.letter.toLowerCase()}</strong>
+              <em>{choice.symbol}</em>
+            </button>
+          ))}
+        </div>
+        {round.result && <p className="quiz-result">{round.result}</p>}
+        <button className="btn dark" onClick={nextRound}>下一題</button>
+      </div>
+    </section>
+  );
+}
+
+function GamesView({ onPractice, onMistake }) {
   return (
     <section>
       <div className="section-heading simple">
@@ -277,6 +375,7 @@ function GamesView({ onPractice }) {
           <p>每個遊戲只練一個明確技能，降低操作難度。</p>
         </div>
       </div>
+      <SoundMonsterGame onPractice={onPractice} onMistake={onMistake} />
       <div className="game-grid">
         {games.map((game) => (
           <article className="game-card" key={game.title}>
@@ -289,6 +388,25 @@ function GamesView({ onPractice }) {
         ))}
       </div>
     </section>
+  );
+}
+
+
+function ClickableStory({ text, onPractice }) {
+  const tokens = text.split(/(\s+)/);
+  return (
+    <p className="story-text clickable-story">
+      {tokens.map((token, index) => {
+        if (/^\s+$/.test(token)) return token;
+        const clean = token.replace(/[^a-zA-Z]/g, '');
+        if (!clean) return token;
+        return (
+          <button key={`${token}-${index}`} onClick={() => { speakWord(clean); onPractice('reader'); }}>
+            {token}
+          </button>
+        );
+      })}
+    </p>
   );
 }
 
@@ -305,11 +423,11 @@ function ReadView({ onPractice }) {
                 <h3>{story.title}</h3>
                 <span>{story.level}</span>
               </div>
-              <p className="story-text">{story.text}</p>
+              <ClickableStory text={story.text} onPractice={onPractice} />
               <div className="chips large">
-                {story.focus.map((word) => <button key={word} onClick={() => speak(word)}>{word} 🔊</button>)}
+                {story.focus.map((word) => <button key={word} onClick={() => { speakWord(word); onPractice('reader'); }}>{word} 🔊</button>)}
               </div>
-              <button className="btn primary" onClick={() => { speak(story.text); onPractice('reader'); }}>朗讀全文</button>
+              <button className="btn primary" onClick={() => { speakText(story.text); onPractice('reader'); }}>朗讀全文</button>
             </article>
           ))}
         </div>
@@ -324,7 +442,7 @@ function ReadView({ onPractice }) {
   );
 }
 
-function ProgressView({ progress, user }) {
+function ProgressView({ progress, user, onClearMistakes }) {
   const completedIds = Object.keys(progress.completedUnits || {});
   const badges = [
     ['Alphabet Master', completedIds.includes('alphabet')],
@@ -364,6 +482,32 @@ function ProgressView({ progress, user }) {
             );
           })}
         </div>
+      </section>
+
+      <section className="panel mistake-panel">
+        <div className="section-title-row">
+          <div>
+            <h2>錯題本</h2>
+            <p>答錯的 phonics sound 會出現在這裡，方便每日複習。</p>
+          </div>
+          <button className="btn secondary" onClick={onClearMistakes}>清空錯題</button>
+        </div>
+        {progress.mistakes?.length ? (
+          <div className="mistake-list">
+            {progress.mistakes.slice(-8).reverse().map((item) => {
+              const expected = getSoundEntry(item.expected);
+              return (
+                <div className="mistake-item" key={item.id}>
+                  <button onClick={() => speakPhonicsSound(item.expected, true)}>{expected?.picture || '🔊'}</button>
+                  <div>
+                    <strong>{item.expectedLabel || item.expected}</strong>
+                    <span>誤選：{item.chosenLabel || item.chosen || '未知'} · {item.skill}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : <p className="hint">目前沒有錯題。可以到遊戲區玩 Sound Monster 測試。</p>}
       </section>
 
       <section className="panel badge-panel">
@@ -420,6 +564,25 @@ export default function App() {
     await persist(next, '已記錄一次練習，獲得 1 顆星星 ⭐');
   }
 
+
+  async function handleMistake(mistake) {
+    const next = mergeProgress({
+      ...progress,
+      mistakes: [...(progress.mistakes || []), mistake].slice(-40),
+      lastPracticed: new Date().toISOString(),
+    });
+    await persist(next, '已加入錯題本，稍後可以到「進度」頁複習。');
+  }
+
+  async function handleClearMistakes() {
+    const next = mergeProgress({
+      ...progress,
+      mistakes: [],
+      lastPracticed: new Date().toISOString(),
+    });
+    await persist(next, '錯題本已清空。');
+  }
+
   async function handleUserChange(nextUser) {
     setUser(nextUser);
     const saved = await loadProgress();
@@ -472,9 +635,9 @@ export default function App() {
 
         {tab === 'map' && <MapView progress={progress} selectedUnit={selectedUnit} setSelectedUnit={setSelectedUnit} setTab={setTab} search={search} setSearch={setSearch} />}
         {tab === 'learn' && <LearnView selectedUnit={selectedUnit} onPractice={handlePractice} onComplete={handleComplete} />}
-        {tab === 'games' && <GamesView onPractice={handlePractice} />}
+        {tab === 'games' && <GamesView onPractice={handlePractice} onMistake={handleMistake} />}
         {tab === 'read' && <ReadView onPractice={handlePractice} />}
-        {tab === 'progress' && <ProgressView progress={progress} user={user} />}
+        {tab === 'progress' && <ProgressView progress={progress} user={user} onClearMistakes={handleClearMistakes} />}
       </main>
     </div>
   );

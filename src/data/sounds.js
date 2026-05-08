@@ -1,0 +1,100 @@
+export const alphabetSounds = [
+  { key: 'a', letter: 'A', symbol: '/æ/', sayAs: 'ă', example: 'apple', picture: '🍎', label: 'short a' },
+  { key: 'b', letter: 'B', symbol: '/b/', sayAs: 'buh', example: 'bear', picture: '🐻', label: 'b sound' },
+  { key: 'c', letter: 'C', symbol: '/k/', sayAs: 'kuh', example: 'cat', picture: '🐱', label: 'hard c' },
+  { key: 'd', letter: 'D', symbol: '/d/', sayAs: 'duh', example: 'dog', picture: '🐶', label: 'd sound' },
+  { key: 'e', letter: 'E', symbol: '/e/', sayAs: 'eh', example: 'egg', picture: '🥚', label: 'short e' },
+  { key: 'f', letter: 'F', symbol: '/f/', sayAs: 'ffff', example: 'fish', picture: '🐟', label: 'f sound' },
+  { key: 'g', letter: 'G', symbol: '/g/', sayAs: 'guh', example: 'goat', picture: '🐐', label: 'hard g' },
+  { key: 'h', letter: 'H', symbol: '/h/', sayAs: 'huh', example: 'hat', picture: '🎩', label: 'h sound' },
+  { key: 'i', letter: 'I', symbol: '/ɪ/', sayAs: 'ih', example: 'igloo', picture: '🧊', label: 'short i' },
+  { key: 'j', letter: 'J', symbol: '/dʒ/', sayAs: 'juh', example: 'jam', picture: '🍓', label: 'j sound' },
+  { key: 'k', letter: 'K', symbol: '/k/', sayAs: 'kuh', example: 'kite', picture: '🪁', label: 'k sound' },
+  { key: 'l', letter: 'L', symbol: '/l/', sayAs: 'lll', example: 'lion', picture: '🦁', label: 'l sound' },
+  { key: 'm', letter: 'M', symbol: '/m/', sayAs: 'mmm', example: 'moon', picture: '🌙', label: 'm sound' },
+  { key: 'n', letter: 'N', symbol: '/n/', sayAs: 'nnn', example: 'nest', picture: '🪺', label: 'n sound' },
+  { key: 'o', letter: 'O', symbol: '/ɒ/', sayAs: 'ŏ', example: 'octopus', picture: '🐙', label: 'short o' },
+  { key: 'p', letter: 'P', symbol: '/p/', sayAs: 'puh', example: 'pig', picture: '🐷', label: 'p sound' },
+  { key: 'q', letter: 'Q', symbol: '/kw/', sayAs: 'kwuh', example: 'queen', picture: '👑', label: 'qu sound' },
+  { key: 'r', letter: 'R', symbol: '/r/', sayAs: 'ruh', example: 'rabbit', picture: '🐰', label: 'r sound' },
+  { key: 's', letter: 'S', symbol: '/s/', sayAs: 'sss', example: 'sun', picture: '☀️', label: 's sound' },
+  { key: 't', letter: 'T', symbol: '/t/', sayAs: 'tuh', example: 'tiger', picture: '🐯', label: 't sound' },
+  { key: 'u', letter: 'U', symbol: '/ʌ/', sayAs: 'ŭ', example: 'umbrella', picture: '☂️', label: 'short u' },
+  { key: 'v', letter: 'V', symbol: '/v/', sayAs: 'vvv', example: 'van', picture: '🚐', label: 'v sound' },
+  { key: 'w', letter: 'W', symbol: '/w/', sayAs: 'wuh', example: 'web', picture: '🕸️', label: 'w sound' },
+  { key: 'x', letter: 'X', symbol: '/ks/', sayAs: 'ks', example: 'fox', picture: '🦊', label: 'x sound' },
+  { key: 'y', letter: 'Y', symbol: '/j/', sayAs: 'yuh', example: 'yak', picture: '🐂', label: 'y sound' },
+  { key: 'z', letter: 'Z', symbol: '/z/', sayAs: 'zzz', example: 'zebra', picture: '🦓', label: 'z sound' },
+];
+
+export const extraSounds = [
+  { key: 'short a', symbol: '/æ/', sayAs: 'ă', example: 'cat', picture: '🐱', label: 'short a' },
+  { key: 'short e', symbol: '/e/', sayAs: 'eh', example: 'bed', picture: '🛏️', label: 'short e' },
+  { key: 'short i', symbol: '/ɪ/', sayAs: 'ih', example: 'pig', picture: '🐷', label: 'short i' },
+  { key: 'short o', symbol: '/ɒ/', sayAs: 'ŏ', example: 'dog', picture: '🐶', label: 'short o' },
+  { key: 'short u', symbol: '/ʌ/', sayAs: 'ŭ', example: 'sun', picture: '☀️', label: 'short u' },
+  { key: 'long a', symbol: '/eɪ/', sayAs: 'long a', example: 'cake', picture: '🍰', label: 'long a' },
+  { key: 'long e', symbol: '/iː/', sayAs: 'long e', example: 'tree', picture: '🌳', label: 'long e' },
+  { key: 'long i', symbol: '/aɪ/', sayAs: 'long i', example: 'bike', picture: '🚲', label: 'long i' },
+  { key: 'long o', symbol: '/oʊ/', sayAs: 'long o', example: 'rope', picture: '🪢', label: 'long o' },
+  { key: 'long u', symbol: '/juː/', sayAs: 'long u', example: 'cube', picture: '🧊', label: 'long u' },
+  { key: 'sh', symbol: '/ʃ/', sayAs: 'shhh', example: 'ship', picture: '🚢', label: 'sh' },
+  { key: 'ch', symbol: '/tʃ/', sayAs: 'chuh', example: 'chair', picture: '🪑', label: 'ch' },
+  { key: 'th', symbol: '/θ/ or /ð/', sayAs: 'th', example: 'thin', picture: '🌬️', label: 'th' },
+  { key: 'wh', symbol: '/w/', sayAs: 'wuh', example: 'whale', picture: '🐳', label: 'wh' },
+  { key: 'ph', symbol: '/f/', sayAs: 'ffff', example: 'phone', picture: '☎️', label: 'ph' },
+  { key: 'ck', symbol: '/k/', sayAs: 'kuh', example: 'duck', picture: '🦆', label: 'ck' },
+  { key: 'ng', symbol: '/ŋ/', sayAs: 'ng', example: 'ring', picture: '💍', label: 'ng' },
+  { key: 'qu', symbol: '/kw/', sayAs: 'kwuh', example: 'queen', picture: '👑', label: 'qu' },
+  { key: 'ai', symbol: '/eɪ/', sayAs: 'long a', example: 'rain', picture: '🌧️', label: 'ai' },
+  { key: 'ay', symbol: '/eɪ/', sayAs: 'long a', example: 'play', picture: '🛝', label: 'ay' },
+  { key: 'ee', symbol: '/iː/', sayAs: 'long e', example: 'bee', picture: '🐝', label: 'ee' },
+  { key: 'ea', symbol: '/iː/', sayAs: 'long e', example: 'leaf', picture: '🍃', label: 'ea' },
+  { key: 'oa', symbol: '/oʊ/', sayAs: 'long o', example: 'boat', picture: '⛵', label: 'oa' },
+  { key: 'ow', symbol: '/oʊ/ or /aʊ/', sayAs: 'ow', example: 'snow', picture: '❄️', label: 'ow' },
+  { key: 'ie', symbol: '/aɪ/', sayAs: 'long i', example: 'pie', picture: '🥧', label: 'ie' },
+  { key: 'igh', symbol: '/aɪ/', sayAs: 'long i', example: 'light', picture: '💡', label: 'igh' },
+  { key: 'ue', symbol: '/uː/', sayAs: 'oo', example: 'blue', picture: '🔵', label: 'ue' },
+  { key: 'ew', symbol: '/uː/', sayAs: 'oo', example: 'new', picture: '✨', label: 'ew' },
+  { key: 'oo', symbol: '/uː/ or /ʊ/', sayAs: 'oo', example: 'moon', picture: '🌙', label: 'oo' },
+  { key: 'ou', symbol: '/aʊ/', sayAs: 'ow', example: 'cloud', picture: '☁️', label: 'ou' },
+  { key: 'oi', symbol: '/ɔɪ/', sayAs: 'oy', example: 'coin', picture: '🪙', label: 'oi' },
+  { key: 'oy', symbol: '/ɔɪ/', sayAs: 'oy', example: 'boy', picture: '👦', label: 'oy' },
+  { key: 'au', symbol: '/ɔː/', sayAs: 'aw', example: 'sauce', picture: '🥫', label: 'au' },
+  { key: 'aw', symbol: '/ɔː/', sayAs: 'aw', example: 'saw', picture: '🪚', label: 'aw' },
+  { key: 'ar', symbol: '/ɑr/', sayAs: 'ar', example: 'car', picture: '🚗', label: 'ar' },
+  { key: 'er', symbol: '/ɜr/', sayAs: 'er', example: 'her', picture: '👧', label: 'er' },
+  { key: 'ir', symbol: '/ɜr/', sayAs: 'er', example: 'bird', picture: '🐦', label: 'ir' },
+  { key: 'or', symbol: '/ɔr/', sayAs: 'or', example: 'corn', picture: '🌽', label: 'or' },
+  { key: 'ur', symbol: '/ɜr/', sayAs: 'er', example: 'turtle', picture: '🐢', label: 'ur' },
+  { key: 'bl', symbol: '/bl/', sayAs: 'bl', example: 'blue', picture: '🔵', label: 'bl' },
+  { key: 'cl', symbol: '/kl/', sayAs: 'cl', example: 'clap', picture: '👏', label: 'cl' },
+  { key: 'fl', symbol: '/fl/', sayAs: 'fl', example: 'flag', picture: '🚩', label: 'fl' },
+  { key: 'gl', symbol: '/gl/', sayAs: 'gl', example: 'glass', picture: '🥛', label: 'gl' },
+  { key: 'pl', symbol: '/pl/', sayAs: 'pl', example: 'plane', picture: '✈️', label: 'pl' },
+  { key: 'br', symbol: '/br/', sayAs: 'br', example: 'brush', picture: '🖌️', label: 'br' },
+  { key: 'cr', symbol: '/kr/', sayAs: 'cr', example: 'crab', picture: '🦀', label: 'cr' },
+  { key: 'dr', symbol: '/dr/', sayAs: 'dr', example: 'drum', picture: '🥁', label: 'dr' },
+  { key: 'fr', symbol: '/fr/', sayAs: 'fr', example: 'frog', picture: '🐸', label: 'fr' },
+  { key: 'gr', symbol: '/gr/', sayAs: 'gr', example: 'green', picture: '🟢', label: 'gr' },
+  { key: 'tr', symbol: '/tr/', sayAs: 'tr', example: 'train', picture: '🚆', label: 'tr' },
+  { key: 'st', symbol: '/st/', sayAs: 'st', example: 'star', picture: '⭐', label: 'st' },
+  { key: 'sp', symbol: '/sp/', sayAs: 'sp', example: 'spoon', picture: '🥄', label: 'sp' },
+  { key: 'sk', symbol: '/sk/', sayAs: 'sk', example: 'sky', picture: '🌌', label: 'sk' },
+  { key: 'sn', symbol: '/sn/', sayAs: 'sn', example: 'snake', picture: '🐍', label: 'sn' },
+  { key: 'sw', symbol: '/sw/', sayAs: 'sw', example: 'swim', picture: '🏊', label: 'sw' },
+];
+
+export const soundLibrary = Object.fromEntries(
+  [...alphabetSounds, ...extraSounds].map((item) => [item.key.toLowerCase(), item])
+);
+
+export function getSoundEntry(key) {
+  if (!key) return null;
+  const normalized = String(key).trim().toLowerCase();
+  return soundLibrary[normalized] || null;
+}
+
+export function getSoundSymbol(key) {
+  return getSoundEntry(key)?.symbol || '/?/';
+}

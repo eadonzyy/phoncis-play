@@ -1,5 +1,8 @@
 # Phonics Adventure 英文自然發音冒險島
 
+> v1.1 更新：修正 Letter Sound 讀成字母名稱的問題，新增 A-Z 字母音板、Sound Monster 聽音選字母遊戲、錯題本與可點擊故事文字。詳見 `UPGRADE_NOTES_v1.1.md`。
+
+
 這是一個給小學生學習 Phonics 的 React + Vite 網站原型，包含：
 
 - 學習地圖
