@@ -44,16 +44,25 @@ jobs:
         with:
           node-version: 20
 
+      - name: Force npm official registry
+        run: |
+          npm config set registry https://registry.npmjs.org/
+          npm config get registry
+          rm -f .npmrc
+          rm -f package-lock.json
+          rm -f npm-shrinkwrap.json
+
       - name: Downgrade npm
-        run: npm install -g npm@9
+        run: npm install -g npm@9 --registry=https://registry.npmjs.org/
 
       - name: Show versions
         run: |
           node -v
           npm -v
+          npm config get registry
 
       - name: Install dependencies
-        run: npm install --legacy-peer-deps --no-audit --no-fund
+        run: npm install --package-lock=false --legacy-peer-deps --no-audit --no-fund --registry=https://registry.npmjs.org/
 
       - name: Build
         run: npm run build
