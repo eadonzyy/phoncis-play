@@ -20,20 +20,20 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       VITE_BASE_PATH: /${{ github.event.repository.name }}/
       VITE_SYNC_PROVIDER: ${{ vars.VITE_SYNC_PROVIDER }}
       VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
       VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      VITE_AUDIO_STORAGE_BUCKET: ${{ vars.VITE_AUDIO_STORAGE_BUCKET }}
+      VITE_ADMIN_EMAILS: ${{ vars.VITE_ADMIN_EMAILS }}
+      VITE_TEACHER_EMAILS: ${{ vars.VITE_TEACHER_EMAILS }}
+
       VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
       VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
       VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
       VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
       VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
-      VITE_FIREBASE_APP_ID: ${{ secrets.VITEBASE_APP_ID }}
-      VITE_ADMIN_EMAILS: ${{ vars.VITE_ADMIN_EMAILS }}
-      VITE_TEACHER_EMAILS: ${{ vars.VITE_TEACHER_EMAILS }}
-      VITE_AUDIO_STORAGE_BUCKET: ${{ vars.VITE_AUDIO_STORAGE_BUCKET }}
+      VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
 
     steps:
       - name: Checkout
@@ -42,11 +42,19 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 20
           cache: npm
 
+      - name: Show versions
+        run: |
+          node -v
+          npm -v
+
+      - name: Clean npm cache
+        run: npm cache clean --force
+
       - name: Install dependencies
-        run: npm ci || npm install
+        run: npm install --no-audit --no-fund
 
       - name: Build
         run: npm run build
@@ -55,7 +63,7 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@v4
         with:
           path: ./dist
 
