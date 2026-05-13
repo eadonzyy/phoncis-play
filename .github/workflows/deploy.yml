@@ -41,6 +41,7 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
           VITE_ADMIN_EMAILS: ${{ vars.VITE_ADMIN_EMAILS }}
           VITE_TEACHER_EMAILS: ${{ vars.VITE_TEACHER_EMAILS }}
+          VITE_AUDIO_STORAGE_BUCKET: ${{ vars.VITE_AUDIO_STORAGE_BUCKET }}
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

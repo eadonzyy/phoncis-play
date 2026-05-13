@@ -1,6 +1,7 @@
 import { defaultSiteContent } from '../data/defaultContent.js';
 import { provider } from './syncService.js';
 import { isSupabaseConfigured, supabase } from './supabaseService.js';
+import { isFirebaseConfigured, firebaseLoadSiteContent, firebaseSaveSiteContent } from './firebaseService.js';
 
 const CONTENT_KEY = 'phonicsAdventure.siteContent';
 const bootAdminEmails = (import.meta.env.VITE_ADMIN_EMAILS || '')
@@ -40,6 +41,10 @@ export function mergeSiteContent(remote) {
     units: Array.isArray(remote?.units) && remote.units.length ? remote.units : base.units,
     stories: Array.isArray(remote?.stories) && remote.stories.length ? remote.stories : base.stories,
     games: Array.isArray(remote?.games) && remote.games.length ? remote.games : base.games,
+    phonicsSounds: {
+      categories: Array.isArray(remote?.phonicsSounds?.categories) && remote.phonicsSounds.categories.length ? remote.phonicsSounds.categories : base.phonicsSounds.categories,
+      items: Array.isArray(remote?.phonicsSounds?.items) && remote.phonicsSounds.items.length ? remote.phonicsSounds.items : base.phonicsSounds.items,
+    },
   };
   merged.adminEmails = normalizeEmails([...base.adminEmails, ...bootAdminEmails, ...(remote?.adminEmails || [])]);
   merged.teacherEmails = normalizeEmails([...base.teacherEmails, ...bootTeacherEmails, ...(remote?.teacherEmails || [])]);
@@ -60,6 +65,12 @@ export async function loadSiteContent() {
       localStorage.setItem(CONTENT_KEY, JSON.stringify(merged));
       return merged;
     }
+    if (provider === 'firebase' && isFirebaseConfigured) {
+      const data = await firebaseLoadSiteContent();
+      const merged = mergeSiteContent(data || null);
+      localStorage.setItem(CONTENT_KEY, JSON.stringify(merged));
+      return merged;
+    }
   } catch (error) {
     console.warn('[contentService] cloud load failed, fallback to local', error);
   }
@@ -75,6 +86,9 @@ export async function saveSiteContent(content) {
       const payload = { key: 'main', data: merged, updated_at: new Date().toISOString() };
       const { error } = await supabase.from('site_content').upsert(payload, { onConflict: 'key' });
       if (error) throw error;
+    }
+    if (provider === 'firebase' && isFirebaseConfigured) {
+      await firebaseSaveSiteContent(merged);
     }
   } catch (error) {
     console.warn('[contentService] cloud save failed, local copy preserved', error);

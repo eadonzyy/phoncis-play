@@ -1,5 +1,7 @@
+import { defaultPhonicsSounds } from './phonicsSounds.js';
 export const defaultSiteContent = {
-  version: 'v1.5.0',
+  version: 'v1.8.0',
+  phonicsSounds: defaultPhonicsSounds,
   adminEmails: ['admin@example.com'],
   teacherEmails: ['teacher@example.com'],
   audioLibrary: { letters: {}, sounds: {}, words: {}, phrases: {} },
@@ -259,9 +261,6 @@ export const defaultSiteContent = {
     },
   ],
   games: [
-    { id: 'sound-monster', title: 'Sound Monster', zh: '餵怪獸正確音', icon: '👾', skill: '聽音選字母', type: 'sound-monster' },
-    { id: 'word-train', title: 'Word Train', zh: '單字火車', icon: '🚂', skill: 'Word families', type: 'word-train' },
-    { id: 'magic-lab', title: 'Magic E Lab', zh: '魔法 E 實驗室', icon: '🧪', skill: '短音變長音', type: 'magic-lab' },
-    { id: 'fishing', title: 'Fishing Words', zh: '釣單字', icon: '🎣', skill: '看圖選字', type: 'fishing' },
+    { id: 'phoneme-listening-choice', title: 'Phoneme Quest', zh: '聽音素選音素', icon: '🎧', skill: '聽音素發音選擇對應音素', type: 'phoneme-choice' },
   ],
 };

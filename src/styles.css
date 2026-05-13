@@ -1108,3 +1108,347 @@ code {
     grid-template-columns: 1fr;
   }
 }
+
+/* v1.8 Phonics Sounds + persistent audio upgrade */
+.version-pill {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 12px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #fff;
+  font-size: 16px;
+  vertical-align: middle;
+}
+
+.sounds-page,
+.game-page {
+  display: grid;
+  gap: 22px;
+}
+
+.sounds-hero {
+  align-items: stretch;
+  background: linear-gradient(135deg, #eff6ff, #f0fdf4);
+  border: 1px solid #dbeafe;
+  border-radius: 30px;
+  padding: 24px;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+}
+
+.sounds-hero h2 {
+  font-size: clamp(34px, 5vw, 64px);
+  line-height: 1;
+}
+
+.sounds-hero h2 span {
+  color: #ff7a1a;
+}
+
+.mini-label {
+  color: #f97316;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+}
+
+.sounds-controls {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.sounds-controls label,
+.admin-toolbar label {
+  display: grid;
+  gap: 6px;
+  font-weight: 800;
+  color: #334155;
+}
+
+.sounds-controls select,
+.admin-toolbar select,
+.admin-form-grid select,
+.admin-form-grid input,
+.admin-form-grid textarea,
+.dropdown-card input,
+.dropdown-card textarea {
+  border: 2px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: #fff;
+  font: inherit;
+}
+
+.sound-category-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.sound-category-strip button {
+  border: 0;
+  border-radius: 18px;
+  padding: 14px 16px;
+  color: white;
+  font-size: 16px;
+  font-weight: 900;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 10px 0 rgba(15, 23, 42, 0.08);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sound-category-strip button:hover,
+.phoneme-card:hover,
+.phoneme-choice-grid button:hover {
+  transform: translateY(-2px);
+}
+
+.sound-category-strip button span {
+  float: right;
+  opacity: 0.95;
+}
+
+.sound-category-strip button:first-child {
+  background: #111827;
+  text-align: center;
+}
+
+.cat-pink { background: #fb7185; }
+.cat-rose { background: #ec4899; }
+.cat-coral { background: #f43f5e; }
+.cat-magenta { background: #db2777; }
+.cat-teal { background: #14b8a6; }
+.cat-green { background: #0f766e; }
+
+.phoneme-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 18px;
+}
+
+.phoneme-card {
+  position: relative;
+  min-height: 210px;
+  border-radius: 30px;
+  padding: 22px;
+  color: #fff;
+  box-shadow: 0 16px 0 rgba(15, 23, 42, 0.08), 0 20px 50px rgba(15, 23, 42, 0.12);
+  overflow: hidden;
+}
+
+.phoneme-card::after {
+  content: '';
+  position: absolute;
+  right: -35px;
+  bottom: -45px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.18);
+}
+
+.phoneme-card strong {
+  display: block;
+  font-size: clamp(52px, 8vw, 82px);
+  line-height: 0.95;
+  letter-spacing: -0.05em;
+}
+
+.phoneme-card em {
+  display: inline-flex;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 18px;
+  font-weight: 900;
+  font-style: normal;
+}
+
+.phoneme-play {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  width: 46px;
+  height: 46px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.95);
+  cursor: pointer;
+  font-size: 20px;
+  box-shadow: 0 8px 18px rgba(15,23,42,0.14);
+}
+
+.related-words {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+  position: relative;
+  z-index: 1;
+}
+
+.related-words span {
+  display: inline-flex;
+  background: rgba(255,255,255,0.2);
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-weight: 900;
+}
+
+.related-words mark {
+  background: #fde047;
+  color: #111827;
+  border-radius: 7px;
+  padding: 0 3px;
+}
+
+.phoneme-game-panel {
+  min-height: 460px;
+  display: grid;
+  place-items: center;
+}
+
+.game-start-screen,
+.game-question-screen {
+  width: min(860px, 100%);
+  display: grid;
+  place-items: center;
+  gap: 18px;
+  text-align: center;
+}
+
+.game-mascot {
+  width: 110px;
+  height: 110px;
+  border-radius: 34px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #dbeafe, #dcfce7);
+  font-size: 64px;
+  box-shadow: inset 0 -8px rgba(15,23,42,0.05);
+}
+
+.btn.big {
+  font-size: 22px;
+  padding: 18px 34px;
+}
+
+.game-topline {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  color: #64748b;
+  font-weight: 900;
+}
+
+.listen-orb {
+  width: 132px;
+  height: 132px;
+  border: 0;
+  border-radius: 50%;
+  background: #1cb0f6;
+  color: white;
+  font-size: 58px;
+  cursor: pointer;
+  box-shadow: 0 13px 0 #0b83c6, 0 20px 35px rgba(28, 176, 246, 0.25);
+}
+
+.game-feedback {
+  min-height: 28px;
+  font-size: 18px;
+  font-weight: 800;
+  color: #475569;
+}
+
+.phoneme-choice-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 16px;
+}
+
+.phoneme-choice-grid button {
+  border: 3px solid #e2e8f0;
+  border-radius: 26px;
+  background: #fff;
+  min-height: 120px;
+  color: #111827;
+  font-size: clamp(42px, 8vw, 72px);
+  font-weight: 1000;
+  cursor: pointer;
+  box-shadow: 0 12px 0 #e2e8f0;
+}
+
+.game-actions {
+  justify-content: center;
+}
+
+.admin-split {
+  display: grid;
+  grid-template-columns: minmax(240px, 340px) 1fr;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.admin-list-panel,
+.admin-editor-panel {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 24px;
+  padding: 16px;
+}
+
+.admin-list-item {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: white;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-list-item.selected {
+  border-color: #1cb0f6;
+  box-shadow: 0 0 0 4px rgba(28,176,246,0.14);
+}
+
+.admin-list-item span {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.admin-form-grid.single {
+  grid-template-columns: 1fr;
+}
+
+.message-strip.warning {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #9a3412;
+}
+
+.upload-label input {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .sounds-controls,
+  .game-topline {
+    justify-content: stretch;
+  }
+  .admin-split {
+    grid-template-columns: 1fr;
+  }
+  .phoneme-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

@@ -14,6 +14,7 @@ import {
   setDoc,
   serverTimestamp,
 } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -36,6 +37,7 @@ export const firebaseAuth = app ? getAuth(app) : null;
 export const firebaseDb = app
   ? initializeFirestore(app, { localCache: persistentLocalCache() })
   : null;
+export const firebaseStorage = app ? getStorage(app) : null;
 
 function requireFirebase() {
   if (!firebaseAuth || !firebaseDb) {
@@ -91,4 +93,19 @@ export async function firebaseSaveProgress(progress) {
   const ref = doc(firebaseDb, 'users', user.uid, 'private', 'progress');
   await setDoc(ref, { data: progress, updatedAt: serverTimestamp() }, { merge: true });
   return progress;
+}
+
+
+export async function firebaseLoadSiteContent() {
+  requireFirebase();
+  const ref = doc(firebaseDb, 'siteContent', 'main');
+  const snap = await getDoc(ref);
+  return snap.exists() ? snap.data().data || {} : {};
+}
+
+export async function firebaseSaveSiteContent(content) {
+  requireFirebase();
+  const ref = doc(firebaseDb, 'siteContent', 'main');
+  await setDoc(ref, { data: content, updatedAt: serverTimestamp() }, { merge: true });
+  return content;
 }
